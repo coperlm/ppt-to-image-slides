@@ -378,7 +378,6 @@ class PPTToImageSlides:
                             if dpi_info:
                                 dpi_x, dpi_y = dpi_info
                                 avg_dpi = (dpi_x + dpi_y) / 2
-                                self.log(f"从图片元数据读取DPI: X={dpi_x:.1f}, Y={dpi_y:.1f}, 平均={avg_dpi:.1f}")
                             else:
                                 # 如果图片没有DPI信息，计算基于像素和点尺寸的比例
                                 scale_factor_x = img_width_pixels / slide_width_points
