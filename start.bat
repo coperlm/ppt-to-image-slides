@@ -29,6 +29,3 @@ if %errorlevel% equ 0 (
     echo 程序运行遇到问题，错误代码: %errorlevel%
     echo 如果是依赖包问题，请运行 install_dependencies.bat 安装依赖。
 )
-
-echo.
-pause
