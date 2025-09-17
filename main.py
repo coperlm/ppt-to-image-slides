@@ -456,18 +456,27 @@ class PPTToImageSlidesGUI:
                         except Exception as e:
                             self.log(f"设置FollowMasterBackground失败: {e}")
                         
-                        # 先彻底清空幻灯片内容（清除所有文字和元素）
+                        # 设置为空白版式（避免占位符文本）
+                        try:
+                            slide.Layout = 12  # ppLayoutBlank = 12
+                            self.log(f"✓ 幻灯片 {i} 已设置为空白版式")
+                        except Exception as e:
+                            self.log(f"设置空白版式失败: {e}")
+                        
+                        # 彻底清空幻灯片内容（包括占位符）
                         try:
                             shape_count = slide.Shapes.Count
                             deleted_count = 0
-                            # 从后往前删除所有形状，避免索引问题
+                            # 从后往前删除所有形状，包括占位符
                             for j in range(shape_count, 0, -1):
                                 try:
-                                    slide.Shapes(j).Delete()
+                                    shape = slide.Shapes(j)
+                                    # 删除所有形状，包括占位符
+                                    shape.Delete()
                                     deleted_count += 1
                                 except:
                                     pass
-                            self.log(f"清空了 {deleted_count} 个原有元素（文字、图形等）")
+                            self.log(f"清空了 {deleted_count} 个元素（包括占位符）")
                         except Exception as e:
                             self.log(f"清空幻灯片内容时出错: {e}")
                         
@@ -508,27 +517,26 @@ class PPTToImageSlidesGUI:
                             except Exception as e:
                                 self.log(f"备用方案失败：{e}")
                         
-                        # 确保没有其他内容覆盖背景（二次清理检查）
+                        # 确保没有其他内容（最终检查）
                         if background_set:
                             try:
-                                # 检查是否有新的形状被意外添加
+                                # 检查是否有新的占位符或形状被意外添加
                                 current_shape_count = slide.Shapes.Count
-                                if current_shape_count > 1:  # 如果有超过1个形状（背景图片应该只有1个或0个）
+                                if current_shape_count > 1:  # 应该只有背景图片
                                     for j in range(current_shape_count, 1, -1):  # 保留第一个形状（背景）
                                         try:
                                             shape = slide.Shapes(j)
-                                            # 只删除非图片形状或者不是背景的形状
-                                            if hasattr(shape, 'Type') and shape.Type not in [13, 14]:  # 保留图片类型
-                                                shape.Delete()
-                                                self.log(f"删除了额外的形状")
+                                            # 删除任何额外的形状（包括可能重新出现的占位符）
+                                            shape.Delete()
+                                            self.log(f"删除了额外的形状/占位符")
                                         except:
                                             pass
                             except Exception as e:
-                                self.log(f"二次清理时出错: {e}")
+                                self.log(f"最终清理时出错: {e}")
                         
                         if background_set:
                             processed_count += 1
-                            self.log(f"✓ 幻灯片 {i} 处理完成，仅保留背景图片")
+                            self.log(f"✓ 幻灯片 {i} 处理完成，仅保留纯净背景")
                         else:
                             self.log(f"✗ 幻灯片 {i} 所有背景设置方法都失败")
 
