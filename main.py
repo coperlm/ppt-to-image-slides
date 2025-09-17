@@ -139,9 +139,6 @@ class PPTToImageSlidesGUI:
         bottom_frame = tk.Frame(self.root)
         bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, padx=20, pady=10)
         
-        tk.Label(bottom_frame, text="💡 提示：转换完成后会自动打开文件保存对话框",
-                font=("Microsoft YaHei", 8), fg="#6C757D").pack(anchor=tk.W)
-        
         self.selected_file = None
         
         # 初始化日志
@@ -222,12 +219,12 @@ class PPTToImageSlidesGUI:
         # 自动生成输出文件路径，与原PPT在同一目录
         input_dir = os.path.dirname(self.selected_file)
         input_basename = os.path.splitext(os.path.basename(self.selected_file))[0]
-        output_file = os.path.join(input_dir, f"{input_basename}_背景版.pptx")
+        output_file = os.path.join(input_dir, f"{input_basename}_image.pptx")
         
         # 如果文件已存在，生成不重复的文件名
         counter = 1
         while os.path.exists(output_file):
-            output_file = os.path.join(input_dir, f"{input_basename}_背景版({counter}).pptx")
+            output_file = os.path.join(input_dir, f"{input_basename}_image({counter}).pptx")
             counter += 1
         
         self.log(f"输出文件路径: {output_file}")
