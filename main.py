@@ -17,22 +17,69 @@ import queue
 
 class PPTToImageSlidesGUI:
     def __init__(self):
-        self.root = tk.Tk()
+        # 优先尝试用tkinterdnd2增强主窗口
+        self.dnd_enabled = False
+        try:
+            from tkinterdnd2 import TkinterDnD
+            self.root = TkinterDnD.Tk()
+            self.dnd_enabled = True
+        except ImportError:
+            self.root = tk.Tk()
         self.root.title("PPT转图片幻灯片工具 - 背景版")
         self.root.geometry("700x700")
         self.root.resizable(True, True)
-        
+
         # 消息队列用于线程间通信
         self.message_queue = queue.Queue()
-        
+
         # 创建GUI界面
         self.create_widgets()
-        
+
+        # 拖拽支持
+        self.add_drag_and_drop_support()
+
         # 设置关闭事件
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
+
         # 启动消息处理
         self.process_queue()
+    def add_drag_and_drop_support(self):
+        """为主窗口添加文件拖拽支持，仅支持PPT文件"""
+        if getattr(self, 'dnd_enabled', False):
+            # 用tkinterdnd2增强拖拽体验
+            self.root.drop_target_register('DND_Files')
+            self.root.dnd_bind('<<Drop>>', self.on_drop_file)
+        else:
+            # 降级为普通Tk，提示用户
+            self.log("未检测到tkinterdnd2库，拖拽功能受限。可通过 pip install tkinterdnd2 获得更好体验。")
+            # 绑定简单的拖拽事件（大多数Tk无效，仅保留提示）
+            pass
+
+    def on_drop_file(self, event):
+        """拖拽文件到窗口时的处理，支持带空格路径"""
+        import re
+        data = event.data.strip()
+        # 用正则提取所有大括号包裹的路径，否则按空格分割
+        paths = re.findall(r'\{([^}]*)\}', data)
+        if not paths:
+            # 没有大括号，直接按空格分割
+            paths = data.split()
+        if not paths:
+            self.log("未检测到有效的文件路径")
+            return
+        file_path = paths[0]
+        # 检查扩展名
+        if file_path.lower().endswith(('.ppt', '.pptx')):
+            self.selected_file = file_path
+            display_name = os.path.basename(file_path)
+            if len(display_name) > 50:
+                display_name = display_name[:47] + "..."
+            self.file_var.set(display_name)
+            self.log(f"已拖入文件: {file_path}")
+            self.convert_btn.config(state=tk.NORMAL)
+        else:
+            self.log(f"拖入的文件不是PPT: {file_path}")
+            messagebox.showwarning("文件类型不支持", "请拖入PPT或PPTX文件！")
         
     def create_widgets(self):
         """创建GUI组件"""
@@ -243,13 +290,22 @@ class PPTToImageSlidesGUI:
         conversion_thread.start()
         
     def convert_in_thread(self, input_ppt, output_ppt):
-        """在线程中执行转换"""
+        """在线程中执行转换，需初始化COM"""
         try:
-            success = self.convert_ppt_to_image_slides(input_ppt, output_ppt)
-            self.message_queue.put(('conversion_complete', (success, output_ppt)))
-        except Exception as e:
-            self.log(f"转换过程发生异常: {e}")
-            self.message_queue.put(('conversion_complete', (False, output_ppt)))
+            import pythoncom
+            pythoncom.CoInitialize()
+            try:
+                success = self.convert_ppt_to_image_slides(input_ppt, output_ppt)
+                self.message_queue.put(('conversion_complete', (success, output_ppt)))
+            except Exception as e:
+                self.log(f"转换过程发生异常: {e}")
+                self.message_queue.put(('conversion_complete', (False, output_ppt)))
+        finally:
+            try:
+                import pythoncom
+                pythoncom.CoUninitialize()
+            except:
+                pass
         
     def on_conversion_complete(self, success, output_file):
         """转换完成回调"""
