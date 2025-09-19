@@ -437,51 +437,69 @@ class PPTToImageSlidesGUI:
             image_files = []
             
             for i in range(1, slide_count + 1):
-                image_path = os.path.join(temp_dir, f"slide_{i:03d}.png")
-                self.log(f"导出幻灯片 {i}/{slide_count}: slide_{i:03d}.png")
-                
+                png_path = os.path.join(temp_dir, f"slide_{i:03d}_tmp.png")  # 临时PNG
+                jpg_path = os.path.join(temp_dir, f"slide_{i:03d}.jpg")
+                self.log(f"导出幻灯片 {i}/{slide_count}: slide_{i:03d}.jpg")
+
                 try:
-                    presentation.Slides(i).Export(image_path, "PNG")
-                    
-                    # 验证导出的图片文件
-                    if self.validate_image_file(image_path):
-                        image_files.append(image_path)
-                        self.update_status(f"已导出 {i}/{slide_count} 张幻灯片")
-                        self.log(f"✓ 幻灯片 {i} 导出成功并验证通过")
+                    presentation.Slides(i).Export(png_path, "PNG")
+
+                    # 验证临时PNG图片
+                    if self.validate_image_file(png_path):
+                        # 转为JPEG
+                        try:
+                            with Image.open(png_path) as img:
+                                rgb_img = img.convert("RGB")
+                                rgb_img.save(jpg_path, "JPEG", quality=85, optimize=True)
+                            # 验证JPEG
+                            if self.validate_image_file(jpg_path):
+                                image_files.append(jpg_path)
+                                self.update_status(f"已导出 {i}/{slide_count} 张幻灯片 (JPG)")
+                                self.log(f"✓ 幻灯片 {i} JPG 转换成功")
+                            else:
+                                self.log(f"✗ 幻灯片 {i} JPG 转换失败")
+                        except Exception as imgconv_e:
+                            self.log(f"✗ 幻灯片 {i} PNG转JPG失败: {imgconv_e}")
                     else:
-                        self.log(f"✗ 幻灯片 {i} 导出失败或文件无效")
+                        self.log(f"✗ 幻灯片 {i} PNG临时文件导出失败或文件无效")
                         # 尝试重新导出一次
                         try:
                             import time
-                            time.sleep(0.5)  # 等待一下
-                            presentation.Slides(i).Export(image_path, "PNG")
-                            if self.validate_image_file(image_path):
-                                image_files.append(image_path)
-                                self.log(f"✓ 幻灯片 {i} 重新导出成功")
+                            time.sleep(0.5)
+                            presentation.Slides(i).Export(png_path, "PNG")
+                            if self.validate_image_file(png_path):
+                                with Image.open(png_path) as img:
+                                    rgb_img = img.convert("RGB")
+                                    rgb_img.save(jpg_path, "JPEG", quality=85, optimize=True)
+                                if self.validate_image_file(jpg_path):
+                                    image_files.append(jpg_path)
+                                    self.log(f"✓ 幻灯片 {i} 重新导出并转JPG成功")
+                                else:
+                                    self.log(f"✗ 幻灯片 {i} 重新导出转JPG仍然失败")
                             else:
-                                self.log(f"✗ 幻灯片 {i} 重新导出仍然失败")
-                        except:
-                            self.log(f"✗ 幻灯片 {i} 重新导出时发生异常")
-                            
+                                self.log(f"✗ 幻灯片 {i} 重新导出PNG临时文件仍然失败")
+                        except Exception as retry_e:
+                            self.log(f"✗ 幻灯片 {i} 重新导出时发生异常: {retry_e}")
+
                 except Exception as e:
                     self.log(f"导出幻灯片 {i} 失败: {e}")
                     continue
-            
+
             if not image_files:
                 self.log("错误：没有成功导出任何图片")
                 return False
                 
-            self.log(f"成功导出 {len(image_files)} 张图片")
+            self.log(f"成功导出 {len(image_files)} 张JPG图片")
             presentation.Close()
             
             # 4. 重新打开PPT作为模板，设置背景
-            self.log("重新打开PPT设置背景...")
+            self.log("重新打开PPT，设置JPG图片为背景...")
             template_presentation = powerpoint.Presentations.Open(os.path.abspath(input_ppt))
             
             # 确保模板幻灯片数量与图片数量匹配
             template_slide_count = template_presentation.Slides.Count
             image_count = len(image_files)
-            self.log(f"模板幻灯片数量: {template_slide_count}, 图片数量: {image_count}")
+            self.log(f"模板幻灯片数量: {template_slide_count}, JPG图片数量: {image_count}")
             
             if template_slide_count != image_count:
                 self.log(f"警告：幻灯片数量({template_slide_count})与图片数量({image_count})不匹配")
@@ -499,8 +517,8 @@ class PPTToImageSlidesGUI:
                     slide = template_presentation.Slides(i)
                     
                     try:
-                        self.log(f"处理幻灯片 {i}/{len(image_files)}...")
-                        self.update_status(f"设置背景 {i}/{len(image_files)}")
+                        self.log(f"处理幻灯片 {i}/{len(image_files)} (JPG)...")
+                        self.update_status(f"设置JPG背景 {i}/{len(image_files)}")
                         
                         # 关键修复：设置FollowMasterBackground为False
                         try:
@@ -536,8 +554,8 @@ class PPTToImageSlidesGUI:
                         # 设置背景图片
                         background_set = False
                         abs_image_path = os.path.abspath(image_file)
-                        
-                        # 方法1：使用UserPicture设置背景
+
+                        # 方法1：使用UserPicture设置JPG背景
                         try:
                             slide.Background.Fill.UserPicture(abs_image_path)
                             # 等待一下让设置生效
@@ -545,9 +563,9 @@ class PPTToImageSlidesGUI:
                             time.sleep(0.1)
                             background_set = self.verify_background_set(slide)
                             if background_set:
-                                self.log(f"✓ 方法1成功：幻灯片 {i} 背景设置完成")
+                                self.log(f"✓ 方法1成功：幻灯片 {i} JPG背景设置完成")
                             else:
-                                self.log(f"方法1设置后验证失败")
+                                self.log(f"方法1设置JPG后验证失败")
                         except Exception as e:
                             self.log(f"方法1失败：{e}")
                         
@@ -566,7 +584,7 @@ class PPTToImageSlidesGUI:
                                 except:
                                     pass
                                 background_set = True
-                                self.log(f"✓ 备用方案成功：幻灯片 {i} 图片作为背景添加完成")
+                                self.log(f"✓ 备用方案成功：幻灯片 {i} JPG图片作为背景添加完成")
                             except Exception as e:
                                 self.log(f"备用方案失败：{e}")
                         
@@ -589,9 +607,9 @@ class PPTToImageSlidesGUI:
                         
                         if background_set:
                             processed_count += 1
-                            self.log(f"✓ 幻灯片 {i} 处理完成，仅保留纯净背景")
+                            self.log(f"✓ 幻灯片 {i} 处理完成，仅保留纯净JPG背景")
                         else:
-                            self.log(f"✗ 幻灯片 {i} 所有背景设置方法都失败")
+                            self.log(f"✗ 幻灯片 {i} 所有JPG背景设置方法都失败")
 
                     except Exception as e:
                         self.log(f"✗ 处理幻灯片 {i} 时发生严重错误: {e}")
