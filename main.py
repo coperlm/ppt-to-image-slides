@@ -446,15 +446,15 @@ class PPTToImageSlidesGUI:
 
                     # 验证临时PNG图片
                     if self.validate_image_file(png_path):
-                        # 转为JPEG
+                        # 转为JPG
                         try:
                             with Image.open(png_path) as img:
                                 rgb_img = img.convert("RGB")
-                                rgb_img.save(jpg_path, "JPEG", quality=85, optimize=True)
-                            # 验证JPEG
+                                rgb_img.save(jpg_path, "JPG", quality=95, optimize=True)
+                            # 验证JPG
                             if self.validate_image_file(jpg_path):
                                 image_files.append(jpg_path)
-                                self.update_status(f"已导出 {i}/{slide_count} 张幻灯片 (JPG)")
+                                self.update_status(f"已导出 {i}/{slide_count} 张幻灯片")
                                 self.log(f"✓ 幻灯片 {i} JPG 转换成功")
                             else:
                                 self.log(f"✗ 幻灯片 {i} JPG 转换失败")
@@ -470,7 +470,7 @@ class PPTToImageSlidesGUI:
                             if self.validate_image_file(png_path):
                                 with Image.open(png_path) as img:
                                     rgb_img = img.convert("RGB")
-                                    rgb_img.save(jpg_path, "JPEG", quality=85, optimize=True)
+                                    rgb_img.save(jpg_path, "JPG", quality=95, optimize=True)
                                 if self.validate_image_file(jpg_path):
                                     image_files.append(jpg_path)
                                     self.log(f"✓ 幻灯片 {i} 重新导出并转JPG成功")
