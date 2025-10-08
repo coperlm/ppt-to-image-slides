@@ -1,65 +1,65 @@
-# PowerPoint转图片幻灯片工具
+# PowerPoint to Image Slides Tool
 
-该工具可以将PowerPoint文件的每一页导出为图片，然后创建一个新的由纯图片（背景）组成的PPT文件
+This tool can export each slide of a PowerPoint file as an image, then create a new PPT file composed entirely of images (as backgrounds).
 
-避免了传输过程中由于字体或者平台的不同，导致格式错乱
+It avoids format corruption during transmission due to different fonts or platforms.
 
-现有方案的局限性 
- - 默认导出PPT方案具有分辨率过低等问题
- - 导出PDF虽然足够清晰但是难以直接和原PDF一样播放正常（如果使用WPS则平台受限）
+Limitations of existing solutions:
+ - Default PPT export has low resolution issues
+ - Exported PDFs are clear enough but difficult to play normally like the original PDF (limited to platforms if using WPS)
 
-适用于学术PPT（不支持动画效果，仅能保留静态页面）
+Suitable for academic PPT presentations (does not support animation effects, only static pages can be preserved)
 
-该程序适用于windows下的office版本PPT，暂未适配WPS和其他操作系统（导出的PPT可以任意平台使用）
+This program is compatible with Office version PPT on Windows, not yet adapted for WPS and other operating systems (the exported PPT can be used on any platform)
 
-V2.0.0更新：原本的图片可能被拖动，进而任意被修改，最新版直接设置为背景，不容易被修改；如果需要旧版本，请下载v1.0.0
+V2.0.0 Update: Previously, images could be dragged and modified arbitrarily. The latest version sets them as backgrounds, making them less likely to be modified. If you need the old version, please download v1.0.0
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
 ```
 pip install requirements.txt
 py main.py
 ```
 
-已完整打包Releases的exe文件，无需python环境，点击即用
+Fully packaged exe files are available in Releases, no Python environment required, ready to use
 
-## 📋 系统要求
+## 📋 System Requirements
 
-- **操作系统**：Windows 7/8/10/11
-- **Python**：3.6或更高版本
-- **办公软件**：Microsoft PowerPoint 2010或更高版本
-- **依赖包**：pywin32, python-pptx, Pillow（自动安装）
+- **Operating System**: Windows 7/8/10/11
+- **Python**: 3.6 or higher
+- **Office Software**: Microsoft PowerPoint 2010 or higher
+- **Dependencies**: pywin32, python-pptx, Pillow (automatically installed)
 
-## 日志信息
+## Changelog
 
 ### 2025/9/19
 
 #### v2.2.0
-- feat: 取消使用PNG，改用JPEG格式的图片，大幅减小生成后的文件大小，亲测大概减小了6-8倍
+- feat: Discontinued PNG usage, switched to JPEG format images, significantly reducing generated file size by approximately 6-8 times
 
 ### 2025/9/18
 
 #### v2.1.0
-- feat: 文件拖住功能
-- fix: 路径截断问题
+- feat: File drag and drop functionality
+- fix: Path truncation issue
 
 ### 2025/9/17 
 
 #### v2.0.1
-- fix: 修复出现空白页的问题，将删除改为新建
+- fix: Fixed blank page issue, changed from deletion to creation
 
 #### v2.0.0 
-- feat: 将图片格式图片改为作为背景
+- feat: Changed image format to background images
 
 ### 2025/7/3
-- 打包为开袋及时的exe文件，方便使用
+- Packaged as ready-to-use exe file for convenience
 
 ### 2025/6/30
 
 #### v1.0.0 
 
-- 初始版本发布
+- Initial version release
 
-## 📄 许可证
+## 📄 License
 
-本项目采用 MIT 许可证。详情请查看 LICENSE 文件。
+This project is licensed under the MIT License. See the LICENSE file for details.
