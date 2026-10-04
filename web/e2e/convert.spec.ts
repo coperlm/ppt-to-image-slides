@@ -58,6 +58,8 @@ test('切换语言后界面文案变为英文', async ({ page }) => {
   await expect(page.locator('#convert')).toHaveText('Convert')
   await expect(page.locator('h1')).toContainText('image-background')
   await expect(page.locator('#verify')).toHaveText('(not run yet)')
+  // 转换前切换语言时，日志里的就绪行也要跟着翻译（日志是纯文本追加，需专门重刷）
+  await expect(page.locator('#log')).toContainText('Ready. Pick a .pptx')
 })
 
 test('演讲者备注以纯文本保留到输出包', async ({ page }) => {
@@ -115,5 +117,6 @@ test('首次访问按浏览器语言选择德语', async ({ browser }) => {
   await page.goto('/')
   await expect(page.locator('#convert')).toHaveText('Konvertieren')
   await expect(page.locator('#lang')).toHaveValue('de')
+  await expect(page.locator('#log')).toContainText('Bereit.')
   await context.close()
 })

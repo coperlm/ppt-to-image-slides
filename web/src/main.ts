@@ -46,10 +46,18 @@ let controller: AbortController | null = null
 let resultUrl: string | null = null
 let lastResult: ConvertResult | null = null
 let probed: Guarded | null = null
+let hasRun = false
 
 function log(message: string): void {
   logEl.textContent += `${message}\n`
   logEl.scrollTop = logEl.scrollHeight
+}
+
+/** 日志是逐行追加的纯文本，已写入的行无法回溯翻译；转换开始前整体重刷，转换后按“历史记录”保留原文 */
+function refreshIdleLog(): void {
+  logEl.textContent = ''
+  log(t('logReady', { limit: fmtBytes(LIMITS.maxInputBytes), slides: LIMITS.maxSlides }))
+  if (selectedFile) log(t('logSelected', { name: selectedFile.name, size: fmtBytes(selectedFile.size) }))
 }
 
 type StatusKind = 'info' | 'error' | 'done'
@@ -258,6 +266,7 @@ async function run(): Promise<void> {
     // 隐私模式下 localStorage 可能不可用，忽略
   }
   controller = new AbortController()
+  hasRun = true
   updateButtons()
   resetPanels()
   log(t('logStart', { qos: t(qos.labelKey), edge: qos.targetLongEdge, quality: qos.quality }))
@@ -352,6 +361,7 @@ function switchLang(lang: Lang): void {
   else {
     setStatus('')
     verifyEl.textContent = t('verifyNotRun')
+    if (!hasRun) refreshIdleLog()
   }
 }
 
@@ -426,4 +436,4 @@ buildQosOptions()
 updateButtons()
 verifyEl.textContent = t('verifyNotRun')
 fileMeta.textContent = t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })
-log(t('logReady', { limit: fmtBytes(LIMITS.maxInputBytes), slides: LIMITS.maxSlides }))
+refreshIdleLog()
