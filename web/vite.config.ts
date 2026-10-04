@@ -6,6 +6,7 @@ export default defineConfig({
   server: { host: '127.0.0.1', port: 5174 },
   build: { target: 'es2022' },
   test: {
+    // jsdom 30 依赖 undici，需要 Node ≥22.3 的 util.markAsUncloneable —— CI 的 node-version 必须 ≥22
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
   },
