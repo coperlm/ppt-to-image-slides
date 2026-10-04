@@ -10,6 +10,8 @@ import {
 } from './config'
 import { errorMessage, fmtBytes, fmtSeconds } from './format'
 import { getLang, setLang, t, type Lang } from './i18n'
+import { estimate } from './estimate'
+import { guardAndRead, type Guarded } from './guards'
 import { convert, type ConvertResult, type PageResult } from './pipeline'
 
 function el<T extends HTMLElement>(id: string): T {
@@ -32,6 +34,7 @@ const progressBar = el<HTMLDivElement>('progress-bar')
 const verifyEl = el<HTMLPreElement>('verify')
 const thumbsEl = el<HTMLDivElement>('thumbs')
 const logEl = el<HTMLPreElement>('log')
+const estimateEl = el<HTMLParagraphElement>('estimate')
 const langSelect = el<HTMLSelectElement>('lang')
 const themeSelect = el<HTMLSelectElement>('theme')
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
@@ -42,6 +45,7 @@ let selectedFile: File | null = null
 let controller: AbortController | null = null
 let resultUrl: string | null = null
 let lastResult: ConvertResult | null = null
+let probed: Guarded | null = null
 
 function log(message: string): void {
   logEl.textContent += `${message}\n`
@@ -115,6 +119,7 @@ function buildQosOptions(): void {
     label.append(input, title, hint)
     qosOptions.appendChild(label)
   }
+  updateEstimate()
 }
 
 function updateButtons(): void {
@@ -123,7 +128,22 @@ function updateButtons(): void {
   cancelBtn.hidden = !running
 }
 
-function acceptFile(file: File | null | undefined): void {
+function updateEstimate(): void {
+  if (!probed) {
+    estimateEl.hidden = true
+    return
+  }
+  const est = estimate(probed.slideCount, probed.sldSz.cx / probed.sldSz.cy, QOS[selectedQos()])
+  estimateEl.hidden = false
+  estimateEl.textContent =
+    t('estLine', {
+      pages: est.pages,
+      bytes: `${fmtBytes(est.bytesLow)}–${fmtBytes(est.bytesHigh)}`,
+      seconds: `${Math.max(1, Math.round(est.secondsLow))}–${Math.max(2, Math.round(est.secondsHigh))} s`,
+    }) + (est.calibrated ? t('estCal') : t('estUncal'))
+}
+
+async function acceptFile(file: File | null | undefined): Promise<void> {
   if (!file || controller) return
   if (!file.name.toLowerCase().endsWith('.pptx')) {
     setStatus(t('statusUnsupported', { name: file.name }), 'error')
@@ -133,12 +153,24 @@ function acceptFile(file: File | null | undefined): void {
     setStatus(t('statusTooBig', { size: fmtBytes(file.size), limit: fmtBytes(LIMITS.maxInputBytes) }), 'error')
     return
   }
+  try {
+    probed = await guardAndRead(file)
+  } catch (error) {
+    probed = null
+    selectedFile = null
+    setStatus(t('statusFailed', { message: errorMessage(error) }), 'error')
+    updateButtons()
+    updateEstimate()
+    return
+  }
   selectedFile = file
   dzTitle.textContent = file.name
   fileMeta.textContent = `${fmtBytes(file.size)} · ${t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })}`
   setStatus('')
   log(t('logSelected', { name: file.name, size: fmtBytes(file.size) }))
   updateButtons()
+  updateEstimate()
+  prefetchHeavyChunks()
 }
 
 function revokeResultUrl(): void {
@@ -244,6 +276,7 @@ async function run(): Promise<void> {
         },
       },
       controller.signal,
+      probed ?? undefined,
     )
     showResult(result)
   } catch (error) {
@@ -351,11 +384,33 @@ for (const type of ['dragleave', 'drop'] as const) {
 dropzone.addEventListener('drop', (event) => acceptFile(event.dataTransfer?.files?.[0]))
 window.addEventListener('drop', (event) => acceptFile(event.dataTransfer?.files?.[0]))
 
+qosOptions.addEventListener('change', updateEstimate)
+
 convertBtn.addEventListener('click', () => void run())
 cancelBtn.addEventListener('click', () => controller?.abort())
 langSelect.addEventListener('change', () => switchLang(langSelect.value as Lang))
 themeSelect.addEventListener('change', () => applyTheme(themeSelect.value as Theme))
 darkQuery.addEventListener('change', syncThemeColor)
+
+// 离线可用：只注册生产构建，避免 dev 的资源被缓存
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {})
+  })
+}
+
+/** 选完文件后空闲预取重 chunk，让「开始转换」少等一次网络；不碰首屏 */
+function prefetchHeavyChunks(): void {
+  const whenIdle = (callback: () => void) => {
+    if (typeof window.requestIdleCallback === 'function') window.requestIdleCallback(callback, { timeout: 4000 })
+    else window.setTimeout(callback, 800)
+  }
+  whenIdle(() => {
+    void import('pptx-preview')
+    void import('@zumer/snapdom')
+    void import('pptxgenjs')
+  })
+}
 
 // 出图依赖浏览器的渲染帧，标签页切到后台时会被挂起；切回来会自动继续
 document.addEventListener('visibilitychange', () => {

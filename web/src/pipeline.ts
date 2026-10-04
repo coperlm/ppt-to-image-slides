@@ -1,10 +1,11 @@
 import type { Qos } from './config'
 import { errorMessage, fmtBytes, fmtSeconds, throwIfAborted, yieldToBrowser } from './format'
-import { guardAndRead, type SlideSize } from './guards'
+import { guardAndRead, type Guarded, type SlideSize } from './guards'
 import { t } from './i18n'
 import { extractNotesTexts, injectNotes } from './notes'
 import { packBackgroundPptx } from './packer'
-import { placeholderSlide, rasterizeSlide } from './rasterizer'
+import { placeholderSlide, rasterizeSlide, type Raster } from './rasterizer'
+import { recordActual } from './estimate'
 import { createRenderer } from './renderer'
 import { verifyOutputPptx, type VerifyResult } from './verifier'
 
@@ -49,11 +50,14 @@ export interface ConvertResult {
   degraded: boolean
 }
 
+const RASTER_ATTEMPTS = 3
+
 export async function convert(
   file: File,
   qos: Qos,
   hooks: Hooks = {},
   signal?: AbortSignal,
+  pre?: Guarded,
 ): Promise<ConvertResult> {
   const log = (message: string) => hooks.onLog?.(message)
   const stage = (name: string) => {
@@ -64,7 +68,7 @@ export async function convert(
 
   stage(t('stageGuard'))
   const tGuard = performance.now()
-  const guarded = await guardAndRead(file)
+  const guarded = pre ?? (await guardAndRead(file))
   const guardMs = performance.now() - tGuard
   log(
     t('logMeta', {
@@ -105,14 +109,22 @@ export async function convert(
     throwIfAborted(signal)
     const index = offset + 1
     const tPage = performance.now()
-    let raster
+    let raster: Raster | undefined
     let pageError: string | undefined
-    try {
-      raster = await rasterizeSlide(await renderer.renderSlide(offset), qos)
-    } catch (error) {
-      pageError = errorMessage(error)
+    for (let attempt = 1; attempt <= RASTER_ATTEMPTS && !raster; attempt++) {
+      try {
+        raster = await rasterizeSlide(await renderer.renderSlide(offset), qos)
+      } catch (error) {
+        pageError = errorMessage(error)
+        if (attempt < RASTER_ATTEMPTS) {
+          log(t('logRetry', { index, attempt }))
+          await new Promise((resolve) => setTimeout(resolve, 250))
+        }
+      }
+    }
+    if (!raster) {
       raster = placeholderSlide(guarded.sldSz.cx, guarded.sldSz.cy, t('placeholder', { index }))
-      log(t('logPageFail', { index, message: pageError }))
+      log(t('logPageFail', { index, message: pageError ?? '' }))
     }
     images.push(raster.dataUrl)
     const page: PageResult = {
@@ -143,6 +155,8 @@ export async function convert(
     log(t('logNotesInjected', { count: notedPages }))
   }
   const packMs = performance.now() - tPack
+  const pixels = pages.reduce((sum, page) => sum + (page.ok ? page.width * page.height : 0), 0)
+  recordActual(qos.name, pixels, output.size, rasterMs, pages.length)
   log(t('logOutput', { size: fmtBytes(output.size), ms: fmtSeconds(packMs) }))
   throwIfAborted(signal)
 

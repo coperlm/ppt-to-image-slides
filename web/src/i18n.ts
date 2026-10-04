@@ -1,4 +1,4 @@
-export type Lang = 'zh' | 'en'
+export type Lang = 'zh' | 'en' | 'de'
 
 const zh = {
   appTitle: 'PPT → 图片背景版 PPTX',
@@ -57,6 +57,10 @@ const zh = {
   logFonts: '字体就绪（document.fonts.ready）',
   logRenderer: '渲染器就绪（逐页模式，DOM 中同时只保留一页），用时 {ms}',
   logPageFail: '第 {index} 页出图失败：{message} → 已用占位页替代',
+  logRetry: '第 {index} 页出图失败（第 {attempt} 次尝试），重试…',
+  estLine: '{pages} 页 · 预估 {bytes} · 约 {seconds}',
+  estUncal: '（首次为保守估计）',
+  estCal: '（按本机历史校准）',
   logWarnFailed: '警告：{count} 页出图失败（第 {pages} 页）',
   logOutput: '输出 {size}，打包用时 {ms}',
   logCancelled: '已取消',
@@ -169,6 +173,10 @@ const en: Record<MessageKey, string> = {
   logFonts: 'Fonts ready (document.fonts.ready)',
   logRenderer: 'Renderer ready (per-slide mode, one page in the DOM at a time) in {ms}',
   logPageFail: 'Page {index} failed to rasterize: {message} → replaced with a placeholder page',
+  logRetry: 'Page {index} failed (attempt {attempt}); retrying…',
+  estLine: '{pages} pages · est. {bytes} · about {seconds}',
+  estUncal: ' (first-run conservative estimate)',
+  estCal: ' (calibrated from this browser)',
   logWarnFailed: 'Warning: {count} page(s) failed (page {pages})',
   logOutput: 'Output {size}, packing took {ms}',
   logCancelled: 'Cancelled',
@@ -222,16 +230,131 @@ const en: Record<MessageKey, string> = {
   verMediaCount: 'media images {media} fewer than pages with backgrounds {withBg}',
 }
 
-const CATALOG: Record<Lang, Record<MessageKey, string>> = { zh, en }
+const de: Record<MessageKey, string> = {
+  appTitle: 'PPT → PPTX mit Bildhintergrund',
+  appSub: 'Rendert jede Folie im Browser zu einem Bild und baut daraus eine .pptx mit echten Bildhintergründen – so überleben Schriften und Layout jeden Rechner.',
+  privacy: 'Nichts wird hochgeladen: Parsen, Rendern, Rastern und Packen laufen vollständig lokal im Browser.',
+  dropTitle: '.pptx-Datei wählen oder hierher ziehen',
+  dropHint: 'Bis {limit} · nur unverschlüsselte .pptx (.ppt wird nicht unterstützt)',
+  qosLegend: 'Ausgabequalität',
+  qosRecommended: ' (empfohlen)',
+  qosClear: 'Klar',
+  qosClearHint: '3840 px Langkante · für Projektion und Zoom',
+  qosBalanced: 'Ausgewogen',
+  qosBalancedHint: '2560 px Langkante · Klarheit vs. Größe',
+  qosSmall: 'Kompakt',
+  qosSmallHint: '1920 px Langkante · leicht zu teilen',
+  btnConvert: 'Konvertieren',
+  btnCancel: 'Abbrechen',
+  hVerify: 'Struktur-Selbstprüfung',
+  hPreview: 'Folienvorschau',
+  previewHint: 'Diese Miniaturen sind genau die Bilder, die eingebettet werden. Bitte prüfen, dann herunterladen – die App kann nicht zurücklesen, wie PowerPoint die Hintergründe darstellt.',
+  hLog: 'Protokoll',
+  hLimits: 'Bekannte Grenzen',
+  limitPptx: 'Nur unverschlüsselte <code>.pptx</code>; 97-2003-<code>.ppt</code> wird nicht unterstützt.',
+  limitStatic: 'Ausgabe sind statische Bildfolien: <strong>Animationen, Übergänge und editierbarer Text gehen verloren</strong>; Notizen bleiben als <strong>Reintext</strong> (ohne Formatierung).',
+  limitFonts: 'Gerendert wird mit <strong>den Schriften Ihres Systems</strong>. Fehlende Quellschriften können Text umbrechen oder überlaufen lassen.',
+  limitMemory: 'Große Decks und hohe Auflösungen sind durch den Browser-Speicher begrenzt; auf schwachen Geräten „Kompakt“ wählen.',
+  limitForeground: '<strong>Tab im Vordergrund lassen</strong>: Browser setzen Hintergrund-Tabs aus, die Konvertierung pausiert bis zur Rückkehr.',
+  footerLine: 'Open Source auf GitHub · gebaut und auf GitHub Pages bereitgestellt durch GitHub Actions ·',
+  footerSource: 'Quellcode ansehen',
+  langLabel: 'Sprache',
+  themeLabel: 'Design',
+  themeSystem: 'System',
+  themeLight: 'Hell',
+  themeDark: 'Dunkel',
+  statusUnsupported: 'Nicht unterstützter Dateityp: {name} (nur .pptx)',
+  statusTooBig: 'Datei {size} überschreitet das Limit von {limit}',
+  statusPaused: 'Pausiert: Browser setzen Hintergrund-Tabs aus; zum Fortsetzen zurückwechseln',
+  statusStage: '{stage} ({name})',
+  statusRaster: 'Rastern {done}/{total} ({name})',
+  statusDone: 'Fertig – Vorschau prüfen, dann herunterladen',
+  statusDoneDegraded: 'Fertig, aber Seite {pages} ist ein Platzhalter; Vorschau vor dem Download prüfen',
+  statusCancelled: 'Abgebrochen',
+  statusFailed: 'Konvertierung fehlgeschlagen: {message}',
+  statusVerifyFail: 'Selbstprüfung fehlgeschlagen; Download blockiert (siehe oben)',
+  logReady: 'Bereit. .pptx wählen und „Konvertieren“ (Limit {limit} / {slides} Folien).',
+  logSelected: 'Gewählt: {name} ({size})',
+  logStart: 'Konvertierung · Preset „{qos}“ Langkante {edge}px · JPEG-Qualität {quality}',
+  logMeta: 'Foliengröße {cx}×{cy} EMU · Seiten {count} (Quelle {source}) · unkomprimiert ≈ {uncompressed}',
+  logMetaSldSzMissing: ' (<p:sldSz> fehlt, Fallback 16:9)',
+  logWarnSldSz: 'Warnung: <p:sldSz> fehlt; Ausgabegröße kann abweichen',
+  logWarnFileScan: 'Warnung: sldIdLst nicht lesbar; Seitenzahl per Dateiscan ermittelt',
+  logNotes: 'Notizen auf {count} Seite(n) gefunden; werden als Reintext übernommen',
+  logNotesInjected: '{count} Seite(n) Reintext-Notizen in das Ausgabepaket geschrieben',
+  logFonts: 'Schriften bereit (document.fonts.ready)',
+  logRenderer: 'Renderer bereit (Einzelfolie, nur eine Seite im DOM) in {ms}',
+  logPageFail: 'Seite {index} fehlgeschlagen: {message} → Platzhalterseite eingesetzt',
+  logRetry: 'Seite {index} fehlgeschlagen (Versuch {attempt}); neuer Versuch…',
+  estLine: '{pages} Seiten · geschätzt {bytes} · ca. {seconds}',
+  estUncal: ' (konservative Erstschätzung)',
+  estCal: ' (an diesem Browser kalibriert)',
+  logWarnFailed: 'Warnung: {count} Seite(n) fehlgeschlagen (Seite {pages})',
+  logOutput: 'Ausgabe {size}, Packen dauerte {ms}',
+  logCancelled: 'Abgebrochen',
+  logFailed: '❌ {message}',
+  stageGuard: 'Eingabe prüfen…',
+  stageRender: 'Folien rendern…',
+  stageRaster: 'Seiten rastern…',
+  stagePack: 'PPTX bauen…',
+  stageVerify: 'Struktur-Selbstprüfung…',
+  verifyNotRun: '(noch nicht ausgeführt)',
+  verifyRunning: '(läuft…)',
+  verifyInputPages: 'Eingabeseiten:',
+  verifySlideXml: 'Slide-XML-Teile:',
+  verifyWithBg: 'Seiten mit aufgelöstem Hintergrund:',
+  verifyMedia: 'Medienbilder im Paket:',
+  verifySize: 'Ausgabegröße:',
+  verifyTime: 'Gesamt:               {total} (Render {render} / Raster {raster} / Packen {pack})',
+  verifyFailedPages: 'Durch Platzhalter ersetzt: Seite {pages}',
+  verifyPass: 'Urteil: ✅ PASS – jeder Hintergrund-r:embed löst auf ein Bild im Paket auf, Bytes passen zur Endung',
+  verifyFail: 'Urteil: ❌ FAIL',
+  verifyFailLine: 'Fehlgeschlagen: {message}',
+  capPage: 'Seite {index} · {w}×{h} · {ms} ms',
+  capPageFailed: 'Seite {index} · Rastern fehlgeschlagen (Platzhalter)',
+  download: '{name} herunterladen ({size})',
+  placeholder: 'Seite {index} konnte nicht gerendert werden',
+  errUnsupported: 'Nicht unterstützter Dateityp: {name} (nur unverschlüsselte .pptx)',
+  errTooBig: 'Datei {size} überschreitet das Limit von {limit}',
+  errCfb: 'Die Datei ist verschlüsselt oder eine binäre 97-2003-.ppt; unterstützt wird nur unverschlüsselte .pptx. In PowerPoint/WPS als „.pptx“ speichern und erneut versuchen',
+  errNotZip: 'Keine gültige .pptx (PK-Zip-Kopf fehlt)',
+  errNoPresentation: 'ppt/presentation.xml fehlt – keine gültige .pptx',
+  errNoSlides: 'Die Präsentation enthält keine Folien',
+  errTooManySlides: '{count} Folien überschreiten das Limit von {limit}',
+  errZipBomb: 'Unkomprimiert ≈ {size} über dem Limit {limit} (Zip-Bomben-Schutz, abgelehnt)',
+  errXml: 'XML-Fehler: {detail}',
+  errRenderCount: 'Gerenderte Seiten {rendered} != Dateiseiten {expected}; Abbruch, um fehlende Seiten zu vermeiden',
+  errZeroSize: 'Folienelement hat keine Größe; Rastern unmöglich',
+  errNoCanvas: 'Der Browser verweigert ein 2D-Canvas',
+  errNoElement: 'Nach dem Rendern von Seite {index} wurde kein Folienelement gefunden',
+  errAborted: 'Konvertierung abgebrochen',
+  verUnreadable: 'Seite {index}: {path} nicht lesbar',
+  verNoBg: 'Seite {index}: kein <p:bg> + <a:blipFill> Hintergrund gefunden',
+  verUnresolved: 'Seite {index}: Hintergrund-Beziehung {id} löst auf kein Bild im Paket auf',
+  verUnknownImage: 'Seite {index}: Hintergrund {path} ist kein erkennbares JPEG/PNG',
+  verMismatch: 'Seite {index}: Hintergrund {path} deklariert {declared}, Bytes sind {actual}',
+  verPageCount: 'Seitenzahl weicht ab: erwartet {expected}, Ausgabe {actual}',
+  verMediaCount: 'Medienbilder {media} weniger als Seiten mit Hintergrund {withBg}',
+}
+
+const CATALOG: Record<Lang, Record<MessageKey, string>> = { zh, en, de }
 const STORAGE_KEY = 'ppt2img-lang'
 
-let current: Lang = readStoredLang()
+let current: Lang = readStoredLang() ?? detectLang()
 
-function readStoredLang(): Lang {
+function detectLang(): Lang {
+  const nav = (navigator.language ?? '').toLowerCase()
+  if (nav.startsWith('zh')) return 'zh'
+  if (nav.startsWith('de')) return 'de'
+  return 'en'
+}
+
+function readStoredLang(): Lang | null {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'en' ? 'en' : 'zh'
+    const stored = localStorage.getItem(STORAGE_KEY)
+    return stored === 'zh' || stored === 'en' || stored === 'de' ? stored : null
   } catch {
-    return 'zh'
+    return null
   }
 }
 

@@ -81,3 +81,27 @@ test('演讲者备注以纯文本保留到输出包', async ({ page }) => {
   const outNotes = await Promise.all(outNotesNames.map((n) => outZip.file(n)!.async('string')))
   expect(outNotes.some((xml) => xml.includes('NOTE-MARKER-42'))).toBe(true)
 })
+
+test('键盘焦点环可见', async ({ page }) => {
+  await page.goto('/')
+  await page.keyboard.press('Tab')
+  const outline = await page.evaluate(() => getComputedStyle(document.activeElement as Element).outlineWidth)
+  expect(outline).toBe('2px')
+})
+
+test('选择文件后显示转换预估', async ({ page }) => {
+  await page.goto('/')
+  await page.setInputFiles('#file', FIXTURE)
+  await expect(page.locator('#estimate')).toBeVisible()
+  await expect(page.locator('#estimate')).toContainText('11 页')
+})
+
+test('离线可用：service worker 接管后断网仍能打开', async ({ page, context }) => {
+  await page.goto('/')
+  await page.evaluate(() => navigator.serviceWorker.ready)
+  await page.reload()
+  await context.setOffline(true)
+  await page.reload()
+  await expect(page.locator('#convert')).toBeVisible()
+  await context.setOffline(false)
+})
