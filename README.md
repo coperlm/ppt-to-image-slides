@@ -17,7 +17,7 @@ V2.0.0 Update: Previously, images could be dragged and modified arbitrarily. The
 ## 🚀 Quick Start
 
 ```
-pip install requirements.txt
+pip install -r requirements.txt
 py main.py
 ```
 
@@ -28,7 +28,7 @@ Fully packaged exe files are available in Releases, no Python environment requir
 - **Operating System**: Windows 7/8/10/11
 - **Python**: 3.6 or higher
 - **Office Software**: Microsoft PowerPoint 2010 or higher
-- **Dependencies**: pywin32, python-pptx, Pillow (automatically installed)
+- **Dependencies**: pywin32, Pillow (automatically installed); tkinterdnd2 (optional, for drag-and-drop)
 
 ## Changelog
 
