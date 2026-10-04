@@ -37,21 +37,26 @@
 4. snapdom 1.x 有保真 bug，须用 `^2.22`；仍会警告「文本可能因字体回退换行」。
 5. 打包产物 1.81 MB（gzip 591 KB），大头是 `pptx-preview` 带的 `echarts`（单文件 1010 KB，占 56%）→ 需代码分割。
 6. **上表的「每页分辨率」不是由 scale 单独决定的**：snapdom 的出图基准是 `display box × scale × dpr`。PoC 在 `devicePixelRatio=1.5` 的机器上跑，`RENDER_WIDTH=1280 × scale 2 × dpr 1.5 = 3840`，于是被记成「scale=2 → 3840×2160」。这意味着**同一档位在 HiDPI 与普通屏上会输出不同分辨率和体积**，不可接受 → 实现中显式传 `dpr: 1`，档位改由「输出长边像素」定义（见 §6）。实测确认：100×60 元素在 dpr=1.5 环境下 `{scale:2, dpr:1}` 产出 200×120。
-7. **转换需要标签页处于前台**：出图依赖浏览器渲染帧，标签页切到后台时逐页出图会停住（简单元素仍可出图，整页复杂 DOM 会停），切回前台继续。UI 已在 `visibilitychange` 时提示「已暂停」。
+7. **转换需要标签页处于前台**：出图依赖浏览器渲染帧。实测同一个 11 页样本：前台总耗时 3.8 s；后台（`visibilityState: hidden`）时**第 1 页耗了 231 s**，之后每页恢复正常的 130–310 ms，总计 234 s。所以后台不是死锁而是被节流到极慢，切回前台即恢复。UI 已在 `visibilitychange` 时提示「已暂停」，页脚也写明了这条限制。
+8. 页间让出主线程必须用 `MessageChannel`，不能用 `requestAnimationFrame`：rAF 在后台标签页完全不触发，会让循环永久停在两页之间（实测踩到）。
 
 ---
 
 ## 3. 技术栈与依赖（锁定版本）
 
 ```jsonc
-// web/package.json（dependencies）
-"jszip":         "^3.10.1",   // 读解 pptx(zip)
-"pptx-preview":  "^1.0.7",    // 渲染每页到 DOM（纯前端）
-"@zumer/snapdom":"^2.24.0",   // DOM→图片（勿用 1.x）
-"pptxgenjs":     "^3.12.0"    // 生成 pptx，支持 slide.background={data}
+// web/package.json —— 实际锁定靠 package-lock.json + CI 的 npm ci（`^` 只是允许范围）
+// dependencies（括号内为 lockfile 解析到的版本）
+"jszip":          "^3.10.1",   // 3.10.2   读解 pptx(zip)
+"pptx-preview":   "^1.0.7",    // 1.0.7    渲染每页到 DOM；license ISC、个人维护，间接带入 echarts/lodash/uuid
+"@zumer/snapdom": "^2.24.18",  // 2.24.18  DOM→图片（勿用 1.x）；出图基准 = display box × scale × dpr
+"pptxgenjs":      "^3.12.0"    // 3.12.0   生成 pptx，支持 slide.background={data}
 // devDependencies
-"vite": "^5.4.0", "typescript": "^5.6.0"
+"vite":         "^5.4.21",     // 5.4.21
+"typescript":   "^5.6.3"       // 5.9.3；npm run build = tsc --noEmit && vite build
 ```
+
+> 未引入测试框架（vitest / playwright）。`guards.ts`、`verifier.ts`、`normalizePartPath` 都是纯函数，加单测成本很低；整条流水线也可以用 Playwright + 仓库里的 `PPT_test.pptx`（456 KB，适合当 fixture）做 headless 冒烟并进 CI。列为 M1 遗留项。
 
 ---
 
@@ -59,21 +64,22 @@
 
 ```
 web/
-  index.html
-  vite.config.ts            # base:'./'
+  index.html                # 单页 UI + 已知限制说明
+  vite.config.ts            # base:'./'，dev 端口 5174
   src/
-    main.ts                 # 装配 UI 与 pipeline
-    config.ts               # 上限、档位、常量
-    guards.ts               # 输入校验 + zip 炸弹防御 + 解析元信息
-    renderer.ts             # pptx-preview 渲染
-    rasterizer.ts           # snapdom 出图
+    main.ts                 # 装配 UI 与 pipeline（拖放、档位、进度、取消、缩略图、下载）
+    config.ts               # 档位（按输出长边像素）、上限、RENDER_WIDTH
+    format.ts               # fmtBytes / fmtSeconds / yieldToBrowser / throwIfAborted
+    guards.ts               # 输入校验 + 容器魔数 + zip 炸弹防御 + sldSz/sldIdLst 解析
+    renderer.ts             # pptx-preview 渲染 + 就绪判定（图片加载完 + DOM 静默期）
+    rasterizer.ts           # snapdom 出图（dpr:1）+ 缩略图 + 失败页占位图
     packer.ts               # PptxGenJS 背景回包
-    verifier.ts             # 输出结构自检
-    pipeline.ts             # 编排（串行/进度/取消/失败页）
-    ui/                     # 组件：文件区、档位、进度、日志、自检面板
+    verifier.ts             # 输出结构自检（r:embed → rels → 包内 JPEG/PNG）
+    pipeline.ts             # 编排（串行/进度/取消/失败页/内存释放顺序）
+    styles.css
 .github/workflows/deploy-pages.yml
 docs/online-conversion-plan.md
-poc/                        # 已验证原型，保留
+poc/                        # 已验证原型，保留（poc/dist 不再纳入版本控制）
 ```
 
 ---
@@ -197,6 +203,8 @@ File(.pptx)
   3. 该部件扩展名是 JPEG/PNG（不用 WebP，PowerPoint 支持不稳）；
   4. `ppt/media` 图片数 ≥ 带背景的页数。
 - 判据用 `DOMParser` + 命名空间查询实现，不用 `xml.includes('<p:bg>')` 这类字符串匹配（前缀或属性一变就失效）。
+- **背景图的真实字节必须与声明的扩展名一致**（magic number 对 `.jpeg`/`.png`）。这条是实测踩出来的：PptxGenJS 在只给 `background.data` 时把扩展名硬编码成 `png`（`pptxgen.es.js:2727`），于是 JPEG 字节被写成 `Slide-1-image-1.png`、`[Content_Types].xml` 声明 `image/png` —— 正是它自己注释里写的会触发 PowerPoint 启动时内容警告的情形。修法：同时传 `path: 'slide-N.jpeg'`（有 `data` 时 PptxGenJS 不会去 fetch `path`，只用它推导扩展名，见 `pptxgen.es.js:4886`）。
+- 统计 media 数时要排除 JSZip 的目录条目 `ppt/media/`，否则会多算一个。
 - 出图失败的页用占位图补齐，因此「有失败页」不会让判据 FAIL，而是以 `degraded` + 失败页码显式呈现给用户，由用户决定是否下载。
 
 ---
@@ -208,7 +216,7 @@ File(.pptx)
 - **打包前先 `destroy()` 释放整副 deck 的渲染 DOM**，再进 PptxGenJS；base64 数组是 pipeline 局部变量，打包完成后立刻清空，UI 只保留 320px 缩略图。
 - 页间让出主线程用 **MessageChannel**，不用 `requestAnimationFrame`：rAF 在后台标签页不触发，会让长转换永久挂起（实测踩到）。
 - 支持 `AbortSignal` 取消（在页边界生效）。
-- 代码分割：`pptx-preview` / `snapdom` / `pptxgenjs` 全部动态 `import()`，首屏只含应用代码 + JSZip。实测首屏 **113.46 KB（gzip 38.19 KB）**，懒加载块 gzip 分别为 pptx-preview 404.55 KB、pptxgenjs 97.87 KB、snapdom 53.73 KB。
+- 代码分割：`pptx-preview` / `snapdom` / `pptxgenjs` 全部动态 `import()`，首屏只含应用代码 + JSZip。实测首屏 **114.08 KB（gzip 38.50 KB）**，懒加载块 gzip 分别为 pptx-preview 404.55 KB、pptxgenjs 97.87 KB、snapdom 53.73 KB。
 
 **已排除的方案**：
 - `URL.createObjectURL(blob)` + `slide.background={path:url}` 替代 base64：PptxGenJS 在浏览器端对 `path` 同样是 fetch → 转 dataURL 再入 zip，base64 照样驻留，拿不到「省 ~33% 字符串」的收益。真要省，得绕过 PptxGenJS 自己用 JSZip 直接写二进制 `ppt/media/*` + 手写 slide XML（顺带还能保留备注，见 §14-6）。
@@ -310,7 +318,7 @@ jobs:
 2. **只在 Chromium 上验证过**：snapdom 走 SVG foreignObject，Safari 在这条路上历史问题最多，Firefox 性能也不同，iOS Safari 还有 canvas 面积上限。M2 需补浏览器矩阵（Chrome / Firefox / Safari 各一）。
 3. `pptx-preview` 保真度上限（M2 前置信度：中）；SmartArt/艺术字/公式为主要风险。图表由 echarts 异步绘制，就绪判定已改为「图片加载完 + DOM 静默期」而非固定 sleep，但仍需 M2 在图表语料上确认不会截到半成品。
 4. 内存峰值只在 11 页小样本上验证过；**100 MB / 上百页未实测**。正解是把渲染改成逐页（`renderSingleSlide`），见 §9 待办。
-5. **转换要求标签页在前台**：后台标签页会挂起渲染帧，出图停住（切回自动继续）。已在 UI 提示，但「长时间后台再切回能否 100% 恢复」未验证。
+5. **转换要求标签页在前台**：后台标签页会被节流到极慢（实测首页 231 s，见 §2-7），但不会丢进度。已在 UI 与页脚提示；未验证的是「后台几十分钟后再切回」的恢复情况。
 6. 备注/母版/动画丢失（见 §1）——对讲课类 deck 是实际回退。
 7. 应用内无法视觉自验背景渲染（`pptx-preview` 不渲染背景）→ 已用「出图缩略图即嵌入内容 + 结构自检 + 下载前人工核对」的 UX 替代，并在页面上写明。
 8. 单一渲染依赖 `pptx-preview`：实装 1.0.7，license **ISC**，作者为个人（package.json 的 author 字段是微信号），无组织维护 → 锁 lockfile + 保留备选（`ChristopherVR/pptx-viewer`）；公开站点还应考虑依赖固定与构建可复现（CI 用 `npm ci`）。

@@ -149,7 +149,7 @@ function showResult(result: ConvertResult): void {
     lines.push(`出图失败并替换为占位页: 第 ${stats.failedPages.join('、')} 页`, '')
   }
   if (verify.ok) {
-    lines.push('判定: ✅ PASS —— 每页 <p:bg>/<a:blipFill> 的 r:embed 均已解析到包内 JPEG/PNG')
+    lines.push('判定: ✅ PASS —— 每页背景的 r:embed 均解析到包内图片，且字节与扩展名一致')
     verifyEl.classList.remove('fail')
   } else {
     lines.push('判定: ❌ FAIL', ...verify.problems.map((problem) => `  · ${problem}`))

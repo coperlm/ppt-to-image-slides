@@ -75,13 +75,13 @@ async function waitForQuiet(root: HTMLElement, quietMs = 400): Promise<void> {
   })
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | void> {
+async function withTimeout(promise: Promise<unknown>, ms: number): Promise<void> {
   let timer = 0
   const timeout = new Promise<void>((resolve) => {
     timer = window.setTimeout(resolve, ms)
   })
   try {
-    return await Promise.race([promise, timeout])
+    await Promise.race([promise, timeout])
   } finally {
     window.clearTimeout(timer)
   }

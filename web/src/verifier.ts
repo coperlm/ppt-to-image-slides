@@ -19,15 +19,15 @@ export interface VerifyResult {
 }
 
 /**
- * 判据不是「XML 里出现了某个字符串」，而是：每页的 p:bg/blipFill 的 r:embed
- * 必须经 rels 解析到包内真实存在的 JPEG/PNG 部件，且页数与输入一致。
+ * 判据不是「XML 里出现了某个字符串」，而是：每页 p:bg 里 blip 的 r:embed 必须经该页 rels
+ * 解析到包内真实存在的部件，且部件的 magic number 与其扩展名一致，页数与输入一致。
  */
 export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Promise<VerifyResult> {
   const zip = await JSZip.loadAsync(blob)
   const slidePaths = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => slideNumberOf(a) - slideNumberOf(b))
-  const mediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\//.test(name)).length
+  const mediaCount = Object.keys(zip.files).filter((name) => /^ppt\/media\//.test(name) && !zip.files[name].dir).length
 
   const slides: SlideCheck[] = []
   const problems: string[] = []
@@ -49,13 +49,26 @@ export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Prom
     }
 
     const mediaPath = await resolveRelationship(zip, path, embedId)
-    const exists = mediaPath !== null && zip.file(mediaPath) !== null
-    if (!exists) {
+    const mediaFile = mediaPath ? zip.file(mediaPath) : null
+    if (!mediaPath || !mediaFile) {
       problems.push(`第 ${index} 页：背景关系 ${embedId} 未解析到包内图片`)
-    } else if (!/\.(jpe?g|png)$/i.test(mediaPath!)) {
-      problems.push(`第 ${index} 页：背景图 ${mediaPath} 不是 JPEG/PNG（PowerPoint 兼容性差）`)
+      slides.push({ index, path, mediaPath, ok: false })
+      continue
     }
-    slides.push({ index, path, mediaPath, ok: exists })
+
+    // 扩展名与真实字节必须一致：PptxGenJS 只给 data 时会把 JPEG 字节写成 .png，
+    // PowerPoint 打开时会弹「发现内容有问题」的修复提示
+    const actual = sniffImageType(await mediaFile.async('uint8array'))
+    const declared = declaredImageType(mediaPath)
+    const mismatch = actual === 'unknown' || actual !== declared
+    if (mismatch) {
+      problems.push(
+        actual === 'unknown'
+          ? `第 ${index} 页：背景图 ${mediaPath} 不是可识别的 JPEG/PNG`
+          : `第 ${index} 页：背景图 ${mediaPath} 声明为 ${declared}，实际字节是 ${actual}`,
+      )
+    }
+    slides.push({ index, path, mediaPath, ok: !mismatch })
   }
 
   if (slidePaths.length !== expectedSlides) {
@@ -76,6 +89,21 @@ export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Prom
     problems,
     ok: problems.length === 0,
   }
+}
+
+type ImageType = 'jpeg' | 'png' | 'unknown'
+
+function sniffImageType(bytes: Uint8Array): ImageType {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8) return 'jpeg'
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'png'
+  return 'unknown'
+}
+
+function declaredImageType(mediaPath: string): ImageType {
+  const ext = mediaPath.split('.').pop()?.toLowerCase()
+  if (ext === 'png') return 'png'
+  if (ext === 'jpg' || ext === 'jpeg') return 'jpeg'
+  return 'unknown'
 }
 
 function findBackgroundEmbedId(slideXml: string): string | null {
