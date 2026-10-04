@@ -4,6 +4,9 @@ import JSZip from 'jszip'
 
 const FIXTURE = new URL('../../PPT_test.pptx', import.meta.url).pathname
 
+// 界面默认语言跟随浏览器；测试固定为中文，语言行为单独用例覆盖
+test.use({ locale: 'zh-CN' })
+
 test('整条流水线：转换 PPT_test.pptx 并通过结构自检', async ({ page }) => {
   await page.goto('/')
   await page.setInputFiles('#file', FIXTURE)
@@ -27,8 +30,8 @@ test('拒绝 97-2003 的 .ppt / 加密文件并提示另存为', async ({ page }
   await page.goto('/')
   const cfb = Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])
   await page.setInputFiles('#file', { name: 'old.pptx', mimeType: 'application/octet-stream', buffer: cfb })
-  await page.getByRole('button', { name: '开始转换' }).click()
   await expect(page.locator('#status')).toContainText('另存为 .pptx')
+  await expect(page.getByRole('button', { name: '开始转换' })).toBeDisabled()
 })
 
 test('主题可切换、面板配色随主题变化且选择被记住', async ({ page }) => {
@@ -104,4 +107,13 @@ test('离线可用：service worker 接管后断网仍能打开', async ({ page,
   await page.reload()
   await expect(page.locator('#convert')).toBeVisible()
   await context.setOffline(false)
+})
+
+test('首次访问按浏览器语言选择德语', async ({ browser }) => {
+  const context = await browser.newContext({ locale: 'de-DE' })
+  const page = await context.newPage()
+  await page.goto('/')
+  await expect(page.locator('#convert')).toHaveText('Konvertieren')
+  await expect(page.locator('#lang')).toHaveValue('de')
+  await context.close()
 })

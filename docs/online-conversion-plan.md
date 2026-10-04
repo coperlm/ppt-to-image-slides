@@ -167,6 +167,8 @@ export function convert(file: File, qos: Qos, hooks?: Hooks, signal?: AbortSigna
 
 倍率按 `targetLongEdge / max(el.offsetWidth, el.offsetHeight)` 反推，并显式传 `dpr: 1`，因此输出像素在任何显示器缩放比例下都一致（见 §2-6）。
 
+> **不设 PNG / 文字优先档**（2026-10-04 实测，见 `web/tools/fidelity/corpus.md`）：2560×1440 文字+表格页 JPEG q0.85 = 177 KB、PNG = 244 KB，且 3× 放大下两者肉眼无差别。PNG 在该场景既不小也不更清楚，照片页只会更差。
+
 > 目前唯一实测数据点来自修正前的一次运行：11 页样本、档位标称「均衡 2560px」，但因 dpr=1.5 实际输出 3840×2160、JPEG 质量 0.85 → **5.32 MB / 3.8 s**（渲染 0.7 s、出图 2.7 s、打包 0.3 s）。dpr 修正后各档的体积与耗时需在 M2 重新实测。
 
 ---
@@ -217,6 +219,9 @@ File(.pptx)
 - **打包前先 `destroy()` 释放整副 deck 的渲染 DOM**，再进 PptxGenJS；base64 数组是 pipeline 局部变量，打包完成后立刻清空，UI 只保留 320px 缩略图。
 - 页间让出主线程用 **MessageChannel**，不用 `requestAnimationFrame`：rAF 在后台标签页不触发，会让长转换永久挂起（实测踩到）。
 - 支持 `AbortSignal` 取消（在页边界生效）。
+- 选中文件后**空闲预取**重 chunk（`requestIdleCallback` 里动态 import），让「开始转换」少等一次网络；不碰首屏体积。
+- 每页出图失败最多尝试 3 次（间隔 250 ms）再落占位页：瞬时故障（字体/解码竞态）有机会自愈，确定性故障只多花两次尝试。
+- 选文件后即给出体积/耗时**区间预估**（`estimate.ts`）：系数取本机历史实测中位数，无历史时用保守常数并标注「首次为保守估计」。
 - 代码分割：`pptx-preview` / `snapdom` / `pptxgenjs` 全部动态 `import()`，首屏只含应用代码 + JSZip。实测首屏 **114.08 KB（gzip 38.50 KB）**，懒加载块 gzip 分别为 pptx-preview 404.55 KB、pptxgenjs 97.87 KB、snapdom 53.73 KB。
 
 **已排除的方案**：

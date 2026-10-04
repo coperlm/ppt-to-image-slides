@@ -38,6 +38,9 @@ A pure-frontend port lives in [`web/`](web): it renders each slide inside the br
 - Works on Windows / macOS / Linux / mobile — no PowerPoint, no Python, nothing to install.
 - Legacy `.ppt` (97-2003 binary) is not supported and cannot be: it is an OLE2 compound document, not a ZIP of XML, and no browser-side engine can lay it out. Open it in PowerPoint/WPS and **Save As `.pptx`** first — one click, then the whole pipeline works.
 - Deployed to GitHub Pages by GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) on every push to `main`.
+- Installable as a PWA: works offline after the first visit; your files still never leave the device.
+- Light / dark / system theme and a Chinese / English / German interface (first visit follows the browser language).
+- Shows a size/time estimate once a file is picked; the estimate self-calibrates from this browser's previous conversions.
 
 Run it locally:
 
