@@ -330,7 +330,8 @@ function applyTheme(theme: Theme): void {
 
 /** 静态文案统一走 data-i18n；字符串全部来自本仓库 catalog，故 innerHTML 安全 */
 function applyLang(): void {
-  document.documentElement.lang = getLang() === 'zh' ? 'zh-CN' : 'en'
+  const lang = getLang()
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : lang
   document.title = t('appTitle')
   for (const node of Array.from(document.querySelectorAll<HTMLElement>('[data-i18n]'))) {
     node.innerHTML = t(node.dataset.i18n as never)

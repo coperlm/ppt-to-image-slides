@@ -9,5 +9,6 @@ export default defineConfig({
     // jsdom 30 依赖 undici，需要 Node ≥22.3 的 util.markAsUncloneable —— CI 的 node-version 必须 ≥22
     environment: 'jsdom',
     include: ['src/**/*.test.ts'],
+    setupFiles: ['./src/vitest.setup.ts'],
   },
 })
