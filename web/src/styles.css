@@ -1,11 +1,67 @@
+/* 主题令牌：默认亮色；data-theme="dark" 或系统偏好暗色时切到暗色令牌 */
 :root {
+  color-scheme: light;
+  --bg: #f6f7f9;
+  --card: #ffffff;
   --bd: #e3e6ea;
   --fg: #1f2328;
   --mut: #6b7280;
   --acc: #2e86ab;
   --ok: #16a34a;
   --bad: #e11d48;
-  --bg: #f6f7f9;
+  --panel-bg: #f3f4f6;
+  --panel-fg: #1f2937;
+  --panel-ok: #15803d;
+  --panel-warn: #b45309;
+  --panel-bad: #be123c;
+  --code-bg: #eef1f4;
+  --drop-hover: #f2f8fb;
+  --disabled: #c3ccd4;
+  --track: #e5e7eb;
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #0b1220;
+  --card: #111a2c;
+  --bd: #243044;
+  --fg: #e6edf3;
+  --mut: #9aa4b2;
+  --acc: #4aa3c7;
+  --ok: #34d399;
+  --bad: #fb7185;
+  --panel-bg: #0d1526;
+  --panel-fg: #d7e2ee;
+  --panel-ok: #7ee2a8;
+  --panel-warn: #fbd38d;
+  --panel-bad: #fda4af;
+  --code-bg: #1c2740;
+  --drop-hover: #16233a;
+  --disabled: #3a465a;
+  --track: #1c2740;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --bg: #0b1220;
+    --card: #111a2c;
+    --bd: #243044;
+    --fg: #e6edf3;
+    --mut: #9aa4b2;
+    --acc: #4aa3c7;
+    --ok: #34d399;
+    --bad: #fb7185;
+    --panel-bg: #0d1526;
+    --panel-fg: #d7e2ee;
+    --panel-ok: #7ee2a8;
+    --panel-warn: #fbd38d;
+    --panel-bad: #fda4af;
+    --code-bg: #1c2740;
+    --drop-hover: #16233a;
+    --disabled: #3a465a;
+    --track: #1c2740;
+  }
 }
 
 * {
@@ -21,7 +77,7 @@ body {
 
 code {
   font: 0.92em ui-monospace, Consolas, monospace;
-  background: #eef1f4;
+  background: var(--code-bg);
   padding: 1px 4px;
   border-radius: 4px;
 }
@@ -37,30 +93,6 @@ h1 {
   margin: 0 0 6px;
 }
 
-.hero-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.lang {
-  color: var(--mut);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.lang select {
-  padding: 4px 8px;
-  border: 1px solid var(--bd);
-  border-radius: 6px;
-  background: #fff;
-  color: var(--fg);
-}
-
 h2 {
   font-size: 15px;
   margin: 0 0 10px;
@@ -69,6 +101,36 @@ h2 {
 h3 {
   font-size: 13px;
   margin: 0 0 6px;
+}
+
+.hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.prefs {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.prefs label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.prefs select {
+  padding: 4px 8px;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  background: var(--card);
+  color: var(--fg);
 }
 
 .sub,
@@ -90,7 +152,7 @@ main {
 }
 
 .card {
-  background: #fff;
+  background: var(--card);
   border: 1px solid var(--bd);
   border-radius: 10px;
   padding: 16px;
@@ -110,7 +172,7 @@ main {
 .dropzone:focus-visible,
 .dropzone.over {
   border-color: var(--acc);
-  background: #f2f8fb;
+  background: var(--drop-hover);
   outline: none;
 }
 
@@ -155,11 +217,12 @@ main {
 
 .qos-option input {
   margin-right: 6px;
+  accent-color: var(--acc);
 }
 
 .qos-option:has(input:checked) {
   border-color: var(--acc);
-  background: #f2f8fb;
+  background: var(--drop-hover);
 }
 
 .qos-name {
@@ -191,12 +254,12 @@ button {
 }
 
 button:disabled {
-  background: #c3ccd4;
+  background: var(--disabled);
   cursor: not-allowed;
 }
 
 button.ghost {
-  background: #fff;
+  background: var(--card);
   color: var(--fg);
   border: 1px solid var(--bd);
 }
@@ -205,9 +268,9 @@ button.ghost {
   padding: 9px 18px;
   border-radius: 8px;
   background: var(--ok);
-  color: #fff;
+  color: #06281a;
   text-decoration: none;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .status {
@@ -229,7 +292,7 @@ button.ghost {
 .progress {
   height: 8px;
   border-radius: 4px;
-  background: #eef1f4;
+  background: var(--track);
   overflow: hidden;
   margin-top: 10px;
 }
@@ -245,25 +308,23 @@ button.ghost {
 .verify {
   max-height: 300px;
   overflow: auto;
-  background: #0f172a;
+  background: var(--panel-bg);
+  color: var(--panel-fg);
   padding: 12px;
   border-radius: 8px;
+  border: 1px solid var(--bd);
   font: 12px/1.6 ui-monospace, Consolas, monospace;
   white-space: pre-wrap;
   word-break: break-all;
   margin: 0;
 }
 
-.log {
-  color: #c7f9cc;
-}
-
 .verify {
-  color: #ffd479;
+  color: var(--panel-warn);
 }
 
 .verify.fail {
-  color: #fda4af;
+  color: var(--panel-bad);
 }
 
 .thumbs {
@@ -276,7 +337,7 @@ button.ghost {
   border: 1px solid var(--bd);
   border-radius: 6px;
   overflow: hidden;
-  background: #fff;
+  background: var(--card);
 }
 
 .thumb.failed {
@@ -309,6 +370,10 @@ button.ghost {
 .foot ul {
   margin: 0 0 10px;
   padding-left: 20px;
+}
+
+.foot a {
+  color: var(--acc);
 }
 
 /* 离屏渲染容器：保持真实布局尺寸但移出视口 */

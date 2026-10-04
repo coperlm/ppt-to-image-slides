@@ -31,6 +31,24 @@ test('拒绝 97-2003 的 .ppt / 加密文件并提示另存为', async ({ page }
   await expect(page.locator('#status')).toContainText('另存为 .pptx')
 })
 
+test('主题可切换、面板配色随主题变化且选择被记住', async ({ page }) => {
+  await page.goto('/')
+  await page.selectOption('#theme', 'dark')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  const darkPanel = await page.locator('#verify').evaluate((el) => getComputedStyle(el).backgroundColor)
+
+  await page.selectOption('#theme', 'light')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+  const lightPanel = await page.locator('#verify').evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(darkPanel).not.toBe(lightPanel)
+
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
+
+  await page.selectOption('#theme', 'system')
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme')
+})
+
 test('切换语言后界面文案变为英文', async ({ page }) => {
   await page.goto('/')
   await page.selectOption('#lang', 'en')

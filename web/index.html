@@ -12,18 +12,38 @@
       name="description"
       content="在浏览器本地把 .pptx 每页渲染成图片，并重建为「图片作幻灯片真背景」的 .pptx。文件不上传服务器。Renders .pptx slides to images in your browser and rebuilds a .pptx with them as true slide backgrounds. Nothing is uploaded."
     />
+    <meta name="theme-color" id="theme-color" content="#f6f7f9" />
+    <script>
+      // 首帧之前落主题，避免暗色系统下闪一下白屏
+      try {
+        var storedTheme = localStorage.getItem('ppt2img-theme');
+        if (storedTheme === 'light' || storedTheme === 'dark') {
+          document.documentElement.setAttribute('data-theme', storedTheme);
+        }
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <header class="hero">
       <div class="hero-row">
         <h1 data-i18n="appTitle">PPT → 图片背景版 PPTX</h1>
-        <label class="lang">
-          <span data-i18n="langLabel">语言</span>
-          <select id="lang">
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </label>
+        <div class="prefs">
+          <label>
+            <span data-i18n="themeLabel">主题</span>
+            <select id="theme">
+              <option value="system" data-i18n="themeSystem">跟随系统</option>
+              <option value="light" data-i18n="themeLight">浅色</option>
+              <option value="dark" data-i18n="themeDark">深色</option>
+            </select>
+          </label>
+          <label>
+            <span data-i18n="langLabel">语言</span>
+            <select id="lang">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+        </div>
       </div>
       <p class="sub" data-i18n="appSub">
         在浏览器内把每页渲染成图片，再重建为「图片作幻灯片真背景」的 <code>.pptx</code>，避免换机器后字体缺失与排版错乱。

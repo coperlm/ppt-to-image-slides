@@ -1,5 +1,13 @@
 import './styles.css'
-import { DEFAULT_QOS, LIMITS, QOS, QOS_ORDER, QOS_STORAGE_KEY, type QosName } from './config'
+import {
+  DEFAULT_QOS,
+  LIMITS,
+  QOS,
+  QOS_ORDER,
+  QOS_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  type QosName,
+} from './config'
 import { errorMessage, fmtBytes, fmtSeconds } from './format'
 import { getLang, setLang, t, type Lang } from './i18n'
 import { convert, type ConvertResult, type PageResult } from './pipeline'
@@ -25,6 +33,10 @@ const verifyEl = el<HTMLPreElement>('verify')
 const thumbsEl = el<HTMLDivElement>('thumbs')
 const logEl = el<HTMLPreElement>('log')
 const langSelect = el<HTMLSelectElement>('lang')
+const themeSelect = el<HTMLSelectElement>('theme')
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)')
+
+type Theme = 'light' | 'dark' | 'system'
 
 let selectedFile: File | null = null
 let controller: AbortController | null = null
@@ -251,6 +263,38 @@ async function run(): Promise<void> {
   }
 }
 
+function storedTheme(): Theme {
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY)
+    return stored === 'light' || stored === 'dark' || stored === 'system' ? stored : 'system'
+  } catch {
+    return 'system'
+  }
+}
+
+function effectiveTheme(): 'light' | 'dark' {
+  const attr = document.documentElement.getAttribute('data-theme')
+  if (attr === 'light' || attr === 'dark') return attr
+  return darkQuery.matches ? 'dark' : 'light'
+}
+
+/** 让手机浏览器地址栏颜色跟着主题走 */
+function syncThemeColor(): void {
+  const meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  if (meta) meta.content = effectiveTheme() === 'dark' ? '#0b1220' : '#f6f7f9'
+}
+
+function applyTheme(theme: Theme): void {
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme')
+  else document.documentElement.setAttribute('data-theme', theme)
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, theme)
+  } catch {
+    // 隐私模式下 localStorage 可能不可用，忽略
+  }
+  syncThemeColor()
+}
+
 /** 静态文案统一走 data-i18n；字符串全部来自本仓库 catalog，故 innerHTML 安全 */
 function applyLang(): void {
   document.documentElement.lang = getLang() === 'zh' ? 'zh-CN' : 'en'
@@ -259,6 +303,7 @@ function applyLang(): void {
     node.innerHTML = t(node.dataset.i18n as never)
   }
   langSelect.value = getLang()
+  themeSelect.value = storedTheme()
 }
 
 function switchLang(lang: Lang): void {
@@ -309,6 +354,8 @@ window.addEventListener('drop', (event) => acceptFile(event.dataTransfer?.files?
 convertBtn.addEventListener('click', () => void run())
 cancelBtn.addEventListener('click', () => controller?.abort())
 langSelect.addEventListener('change', () => switchLang(langSelect.value as Lang))
+themeSelect.addEventListener('change', () => applyTheme(themeSelect.value as Theme))
+darkQuery.addEventListener('change', syncThemeColor)
 
 // 出图依赖浏览器的渲染帧，标签页切到后台时会被挂起；切回来会自动继续
 document.addEventListener('visibilitychange', () => {
@@ -318,6 +365,7 @@ document.addEventListener('visibilitychange', () => {
 })
 
 applyLang()
+syncThemeColor()
 buildQosOptions()
 updateButtons()
 verifyEl.textContent = t('verifyNotRun')

@@ -25,6 +25,8 @@ export const QOS_ORDER: QosName[] = ['clear', 'balanced', 'small']
 
 export const QOS_STORAGE_KEY = 'ppt2img-qos'
 
+export const THEME_STORAGE_KEY = 'ppt2img-theme'
+
 export const LIMITS = {
   maxInputBytes: 100 * 1024 * 1024,
   maxUncompressedBytes: 600 * 1024 * 1024,

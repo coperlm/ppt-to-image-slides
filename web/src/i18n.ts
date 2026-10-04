@@ -29,6 +29,10 @@ const zh = {
   footerLine: '开源在 GitHub · 由 GitHub Actions 构建并部署到 GitHub Pages ·',
   footerSource: '查看源码',
   langLabel: '语言',
+  themeLabel: '主题',
+  themeSystem: '跟随系统',
+  themeLight: '浅色',
+  themeDark: '深色',
 
   statusUnsupported: '不支持的文件类型：{name}（仅支持 .pptx）',
   statusTooBig: '文件 {size} 超过上限 {limit}',
@@ -137,6 +141,10 @@ const en: Record<MessageKey, string> = {
   footerLine: 'Open source on GitHub · built and deployed to GitHub Pages by GitHub Actions ·',
   footerSource: 'View source',
   langLabel: 'Language',
+  themeLabel: 'Theme',
+  themeSystem: 'System',
+  themeLight: 'Light',
+  themeDark: 'Dark',
 
   statusUnsupported: 'Unsupported file type: {name} (.pptx only)',
   statusTooBig: 'File {size} exceeds the {limit} limit',
