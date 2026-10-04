@@ -1,0 +1,295 @@
+:root {
+  --bd: #e3e6ea;
+  --fg: #1f2328;
+  --mut: #6b7280;
+  --acc: #2e86ab;
+  --ok: #16a34a;
+  --bad: #e11d48;
+  --bg: #f6f7f9;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font: 14px/1.6 system-ui, -apple-system, "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+
+code {
+  font: 0.92em ui-monospace, Consolas, monospace;
+  background: #eef1f4;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.hero {
+  padding: 28px 24px 8px;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+
+h1 {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+h2 {
+  font-size: 15px;
+  margin: 0 0 10px;
+}
+
+h3 {
+  font-size: 13px;
+  margin: 0 0 6px;
+}
+
+.sub,
+.privacy,
+.hint {
+  color: var(--mut);
+  margin: 0 0 6px;
+}
+
+.privacy {
+  color: var(--ok);
+  font-weight: 500;
+}
+
+main {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 8px 24px 24px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 14px;
+}
+
+.dropzone {
+  border: 2px dashed var(--bd);
+  border-radius: 10px;
+  padding: 28px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dropzone:hover,
+.dropzone:focus-visible,
+.dropzone.over {
+  border-color: var(--acc);
+  background: #f2f8fb;
+  outline: none;
+}
+
+.dz-title {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.dz-hint {
+  margin: 0;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.qos {
+  border: 1px solid var(--bd);
+  border-radius: 10px;
+  padding: 10px 14px 14px;
+  margin: 14px 0;
+}
+
+.qos legend {
+  padding: 0 6px;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.qos-options {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qos-option {
+  flex: 1 1 200px;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.qos-option input {
+  margin-right: 6px;
+}
+
+.qos-option:has(input:checked) {
+  border-color: var(--acc);
+  background: #f2f8fb;
+}
+
+.qos-name {
+  font-weight: 600;
+}
+
+.qos-hint {
+  display: block;
+  color: var(--mut);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  padding: 9px 20px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--acc);
+  color: #fff;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+button:disabled {
+  background: #c3ccd4;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: #fff;
+  color: var(--fg);
+  border: 1px solid var(--bd);
+}
+
+.download {
+  padding: 9px 18px;
+  border-radius: 8px;
+  background: var(--ok);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.status {
+  margin: 12px 0 0;
+  min-height: 20px;
+  color: var(--mut);
+}
+
+.status.error {
+  color: var(--bad);
+  font-weight: 500;
+}
+
+.status.done {
+  color: var(--ok);
+  font-weight: 500;
+}
+
+.progress {
+  height: 8px;
+  border-radius: 4px;
+  background: #eef1f4;
+  overflow: hidden;
+  margin-top: 10px;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--acc);
+  transition: width 0.2s;
+}
+
+.log,
+.verify {
+  max-height: 300px;
+  overflow: auto;
+  background: #0f172a;
+  padding: 12px;
+  border-radius: 8px;
+  font: 12px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+}
+
+.log {
+  color: #c7f9cc;
+}
+
+.verify {
+  color: #ffd479;
+}
+
+.verify.fail {
+  color: #fda4af;
+}
+
+.thumbs {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 10px;
+}
+
+.thumb {
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.thumb.failed {
+  border-color: var(--bad);
+}
+
+.thumb img {
+  width: 100%;
+  display: block;
+}
+
+.thumb .cap {
+  font-size: 11px;
+  color: var(--mut);
+  padding: 4px 6px;
+}
+
+.thumb.failed .cap {
+  color: var(--bad);
+}
+
+.foot {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 0 24px 40px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.foot ul {
+  margin: 0 0 10px;
+  padding-left: 20px;
+}
+
+/* 离屏渲染容器：保持真实布局尺寸但移出视口 */
+.render-host {
+  position: fixed;
+  left: -100000px;
+  top: 0;
+}
