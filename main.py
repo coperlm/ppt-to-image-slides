@@ -14,6 +14,8 @@ from PIL import Image
 import win32com.client
 import threading
 import queue
+import time
+import traceback
 
 class PPTToImageSlidesGUI:
     def __init__(self):
@@ -31,6 +33,9 @@ class PPTToImageSlidesGUI:
 
         # 消息队列用于线程间通信
         self.message_queue = queue.Queue()
+
+        # 转换状态标志：PowerPoint 为单实例 COM，禁止并发转换
+        self.converting = False
 
         # 创建GUI界面
         self.create_widgets()
@@ -55,6 +60,17 @@ class PPTToImageSlidesGUI:
             # 绑定简单的拖拽事件（大多数Tk无效，仅保留提示）
             pass
 
+    def _set_convert_enabled(self, enabled):
+        """根据"入参意图 + 转换状态 + 文件选择情况"安全设置转换按钮可用性。
+
+        转换进行中始终禁用，避免用户在转换期间再次触发并发转换。
+        """
+        try:
+            should_enable = bool(enabled) and not self.converting and bool(self.selected_file)
+            self.convert_btn.config(state=tk.NORMAL if should_enable else tk.DISABLED)
+        except tk.TclError:
+            pass
+
     def on_drop_file(self, event):
         """拖拽文件到窗口时的处理，支持带空格路径"""
         import re
@@ -76,7 +92,7 @@ class PPTToImageSlidesGUI:
                 display_name = display_name[:47] + "..."
             self.file_var.set(display_name)
             self.log(f"已拖入文件: {file_path}")
-            self.convert_btn.config(state=tk.NORMAL)
+            self._set_convert_enabled(True)
         else:
             self.log(f"拖入的文件不是PPT: {file_path}")
             messagebox.showwarning("文件类型不支持", "请拖入PPT或PPTX文件！")
@@ -204,34 +220,52 @@ class PPTToImageSlidesGUI:
         """更新进度条到队列"""
         self.message_queue.put(('progress', action))
         
+    def _handle_queue_message(self, msg_type, msg_data):
+        """处理单条队列消息（与轮询解耦，便于异常隔离）"""
+        if msg_type == 'log':
+            self.log_text.insert(tk.END, f"{msg_data}\n")
+            self.log_text.see(tk.END)
+
+        elif msg_type == 'status':
+            self.status_var.set(msg_data)
+
+        elif msg_type == 'progress':
+            if msg_data == 'start':
+                self.progress.start(10)
+            elif msg_data == 'stop':
+                self.progress.stop()
+
+        elif msg_type == 'conversion_complete':
+            success, output_file = msg_data
+            self.on_conversion_complete(success, output_file)
+
     def process_queue(self):
-        """处理消息队列"""
+        """处理消息队列。
+
+        单条消息处理异常不应中断整个轮询循环，否则日志/进度/完成回调会永久失效；
+        因此异常被隔离在单条消息层面，且重新调度放在 finally 中确保一定执行。
+        """
         try:
             while True:
-                msg_type, msg_data = self.message_queue.get_nowait()
-                
-                if msg_type == 'log':
-                    self.log_text.insert(tk.END, f"{msg_data}\n")
-                    self.log_text.see(tk.END)
-                    
-                elif msg_type == 'status':
-                    self.status_var.set(msg_data)
-                    
-                elif msg_type == 'progress':
-                    if msg_data == 'start':
-                        self.progress.start(10)
-                    elif msg_data == 'stop':
-                        self.progress.stop()
-                        
-                elif msg_type == 'conversion_complete':
-                    success, output_file = msg_data
-                    self.on_conversion_complete(success, output_file)
-                    
-        except queue.Empty:
-            pass
-        
-        # 每100ms检查一次队列
-        self.root.after(100, self.process_queue)
+                try:
+                    msg_type, msg_data = self.message_queue.get_nowait()
+                except queue.Empty:
+                    break
+
+                try:
+                    self._handle_queue_message(msg_type, msg_data)
+                except Exception as e:
+                    try:
+                        self.log_text.insert(tk.END, f"[内部错误] 处理界面消息失败: {e}\n")
+                        self.log_text.see(tk.END)
+                    except Exception:
+                        pass
+        finally:
+            # 每100ms检查一次队列；窗口已销毁时忽略重调度异常
+            try:
+                self.root.after(100, self.process_queue)
+            except tk.TclError:
+                pass
         
     def select_file(self):
         """选择PPT文件"""
@@ -255,12 +289,17 @@ class PPTToImageSlidesGUI:
                 display_name = display_name[:47] + "..."
             self.file_var.set(display_name)
             self.log(f"已选择文件: {filename}")
-            self.convert_btn.config(state=tk.NORMAL)
+            self._set_convert_enabled(True)
         
     def start_conversion(self):
         """开始转换（在新线程中）"""
         if not self.selected_file:
             messagebox.showerror("错误", "请先选择PPT文件")
+            return
+
+        # 防止并发转换：PowerPoint 为单实例 COM，多个转换线程会相互干扰
+        if self.converting:
+            messagebox.showwarning("正在转换", "已有转换任务正在进行，请等待其完成")
             return
             
         # 自动生成输出文件路径，与原PPT在同一目录
@@ -276,8 +315,9 @@ class PPTToImageSlidesGUI:
         
         self.log(f"输出文件路径: {output_file}")
             
-        # 禁用转换按钮
-        self.convert_btn.config(state=tk.DISABLED)
+        # 进入转换状态并禁用转换按钮
+        self.converting = True
+        self._set_convert_enabled(False)
         self.update_status("正在转换...")
         self.update_progress('start')
         
@@ -304,13 +344,14 @@ class PPTToImageSlidesGUI:
             try:
                 import pythoncom
                 pythoncom.CoUninitialize()
-            except:
+            except Exception:
                 pass
         
     def on_conversion_complete(self, success, output_file):
         """转换完成回调"""
         self.update_progress('stop')
-        self.convert_btn.config(state=tk.NORMAL)
+        self.converting = False
+        self._set_convert_enabled(True)
         
         if success:
             self.update_status("转换完成！")
@@ -327,29 +368,36 @@ class PPTToImageSlidesGUI:
             self.log("❌ 转换失败，请检查上面的日志信息")
             messagebox.showerror("转换失败", "转换过程中发生错误，请查看日志获取详细信息")
     
-    def verify_background_set(self, slide):
-        """验证幻灯片背景是否成功设置"""
+    def _clear_slide_shapes(self, slide):
+        """删除幻灯片上的所有形状（含占位符），返回删除数量。
+
+        仅当"存在任意图片形状就判定成功"这类启发式判据可能误报，
+        此方法用于确定性清空，供正常流程与失败回退复用。
+        """
+        deleted_count = 0
         try:
-            # 检查背景填充类型
-            fill_type = slide.Background.Fill.Type
-            # 如果是图片填充类型，说明背景设置成功
-            if fill_type == 6:  # msoFillPicture = 6
-                return True
-            
-            # 备用验证：检查是否有背景相关的形状
-            try:
-                if slide.Shapes.Count > 0:
-                    # 检查是否有图片形状
-                    for i in range(1, slide.Shapes.Count + 1):
-                        shape = slide.Shapes(i)
-                        if hasattr(shape, 'Type') and shape.Type == 13:  # msoShapeTypePicture = 13
-                            return True
-                return False
-            except:
-                return False
-                
+            for j in range(slide.Shapes.Count, 0, -1):
+                try:
+                    slide.Shapes(j).Delete()
+                    deleted_count += 1
+                except Exception:
+                    pass
         except Exception as e:
-            # 如果验证过程出错，假设设置失败
+            self.log(f"清空幻灯片形状时出错: {e}")
+        return deleted_count
+
+    def verify_background_set(self, slide):
+        """验证幻灯片背景是否成功设置为图片填充。
+
+        仅以背景填充类型作为判据（msoFillPicture = 6）。
+        刻意不使用"存在图片形状"作为兜底判据：该判据会把"背景未设置成功"
+        误判为成功，从而跳过更可靠的 AddPicture 回退方案。
+        验证失败时返回 False，交由调用方走回退逻辑，行为可预期。
+        """
+        try:
+            return slide.Background.Fill.Type == 6  # msoFillPicture = 6
+        except Exception as e:
+            self.log(f"验证背景设置时出错（按失败处理）: {e}")
             return False
     
     def validate_image_file(self, image_path):
@@ -434,6 +482,7 @@ class PPTToImageSlidesGUI:
             
             # 3. 导出为图片
             self.log("开始导出幻灯片为图片...")
+            # 每项为 (幻灯片序号, JPG路径)：保留原始页码，避免部分导出失败时图片错位
             image_files = []
             
             for i in range(1, slide_count + 1):
@@ -453,7 +502,7 @@ class PPTToImageSlidesGUI:
                                 rgb_img.save(jpg_path, "JPG", quality=95, optimize=True)
                             # 验证JPG
                             if self.validate_image_file(jpg_path):
-                                image_files.append(jpg_path)
+                                image_files.append((i, jpg_path))
                                 self.update_status(f"已导出 {i}/{slide_count} 张幻灯片")
                                 self.log(f"✓ 幻灯片 {i} JPG 转换成功")
                             else:
@@ -464,7 +513,6 @@ class PPTToImageSlidesGUI:
                         self.log(f"✗ 幻灯片 {i} PNG临时文件导出失败或文件无效")
                         # 尝试重新导出一次
                         try:
-                            import time
                             time.sleep(0.5)
                             presentation.Slides(i).Export(png_path, "PNG")
                             if self.validate_image_file(png_path):
@@ -472,7 +520,7 @@ class PPTToImageSlidesGUI:
                                     rgb_img = img.convert("RGB")
                                     rgb_img.save(jpg_path, "JPG", quality=95, optimize=True)
                                 if self.validate_image_file(jpg_path):
-                                    image_files.append(jpg_path)
+                                    image_files.append((i, jpg_path))
                                     self.log(f"✓ 幻灯片 {i} 重新导出并转JPG成功")
                                 else:
                                     self.log(f"✗ 幻灯片 {i} 重新导出转JPG仍然失败")
@@ -496,23 +544,32 @@ class PPTToImageSlidesGUI:
             self.log("重新打开PPT，设置JPG图片为背景...")
             template_presentation = powerpoint.Presentations.Open(os.path.abspath(input_ppt))
             
-            # 确保模板幻灯片数量与图片数量匹配
+            # 建立 幻灯片序号 -> 图片路径 的映射，确保图片与原始页严格对应
             template_slide_count = template_presentation.Slides.Count
+            image_by_slide = {idx: path for idx, path in image_files}
             image_count = len(image_files)
-            self.log(f"模板幻灯片数量: {template_slide_count}, JPG图片数量: {image_count}")
-            
-            if template_slide_count != image_count:
-                self.log(f"警告：幻灯片数量({template_slide_count})与图片数量({image_count})不匹配")
-                # 如果模板幻灯片少于图片数量，添加幻灯片
-                while template_presentation.Slides.Count < image_count:
-                    # 复制最后一张幻灯片
+            self.log(f"模板幻灯片数量: {template_slide_count}, 成功导出图片数量: {image_count}")
+
+            # 若成功导出的最大页码超出模板页数，防御性补齐（正常情况下不会发生）
+            if image_by_slide:
+                while template_presentation.Slides.Count < max(image_by_slide):
                     last_slide = template_presentation.Slides(template_presentation.Slides.Count)
-                    new_slide = last_slide.Duplicate()
+                    last_slide.Duplicate()
                     self.log(f"添加了新幻灯片，当前总数: {template_presentation.Slides.Count}")
+
+            # 清空没有对应图片的幻灯片（导出失败或多余的页），避免输出残留原始内容
+            for i in range(1, template_presentation.Slides.Count + 1):
+                if i not in image_by_slide:
+                    try:
+                        self.log(f"警告：幻灯片 {i} 无对应图片，已清空其内容以避免残留原始内容")
+                        deleted = self._clear_slide_shapes(template_presentation.Slides(i))
+                        self.log(f"已清空幻灯片 {i} 的 {deleted} 个元素")
+                    except Exception as e:
+                        self.log(f"清空幻灯片 {i} 时出错: {e}")
             
             # 处理每张幻灯片
             processed_count = 0
-            for i, image_file in enumerate(image_files, 1):
+            for i, image_file in sorted(image_by_slide.items()):
                 if i <= template_presentation.Slides.Count:
                     slide = template_presentation.Slides(i)
                     
@@ -535,31 +592,18 @@ class PPTToImageSlidesGUI:
                             self.log(f"设置空白版式失败: {e}")
                         
                         # 彻底清空幻灯片内容（包括占位符）
-                        try:
-                            shape_count = slide.Shapes.Count
-                            deleted_count = 0
-                            # 从后往前删除所有形状，包括占位符
-                            for j in range(shape_count, 0, -1):
-                                try:
-                                    shape = slide.Shapes(j)
-                                    # 删除所有形状，包括占位符
-                                    shape.Delete()
-                                    deleted_count += 1
-                                except:
-                                    pass
-                            self.log(f"清空了 {deleted_count} 个元素（包括占位符）")
-                        except Exception as e:
-                            self.log(f"清空幻灯片内容时出错: {e}")
+                        deleted_count = self._clear_slide_shapes(slide)
+                        self.log(f"清空了 {deleted_count} 个元素（包括占位符）")
                         
                         # 设置背景图片
                         background_set = False
                         abs_image_path = os.path.abspath(image_file)
+                        bg_shape_id = None  # 备用方案中背景图的唯一Id，供最终清理精确保留
 
                         # 方法1：使用UserPicture设置JPG背景
                         try:
                             slide.Background.Fill.UserPicture(abs_image_path)
                             # 等待一下让设置生效
-                            import time
                             time.sleep(0.1)
                             background_set = self.verify_background_set(slide)
                             if background_set:
@@ -578,30 +622,39 @@ class PPTToImageSlidesGUI:
                                 
                                 # 添加图片铺满整个幻灯片
                                 picture = slide.Shapes.AddPicture(abs_image_path, False, True, 0, 0, slide_width, slide_height)
+                                # 记录背景图唯一Id：后续按Id精确保留，不依赖形状顺序（ZOrder 可能失败）
+                                try:
+                                    bg_shape_id = picture.Id
+                                except Exception:
+                                    bg_shape_id = None
                                 # 将图片移到最底层（作为背景）
                                 try:
                                     picture.ZOrder(0)  # 发送到底层
-                                except:
-                                    pass
+                                except Exception as zorder_error:
+                                    self.log(f"ZOrder调整失败（不影响使用）: {zorder_error}")
                                 background_set = True
                                 self.log(f"✓ 备用方案成功：幻灯片 {i} JPG图片作为背景添加完成")
                             except Exception as e:
                                 self.log(f"备用方案失败：{e}")
                         
-                        # 确保没有其他内容（最终检查）
+                        # 最终清理：UserPicture 成功时幻灯片应无形状；AddPicture 成功时应仅保留背景图。
+                        # 按 Shape.Id 精确匹配保留背景图，避免依赖形状顺序（ZOrder 可能失败）
                         if background_set:
                             try:
-                                # 检查是否有新的占位符或形状被意外添加
-                                current_shape_count = slide.Shapes.Count
-                                if current_shape_count > 1:  # 应该只有背景图片
-                                    for j in range(current_shape_count, 1, -1):  # 保留第一个形状（背景）
+                                for j in range(slide.Shapes.Count, 0, -1):
+                                    try:
+                                        shape = slide.Shapes(j)
+                                        shape_id = None
                                         try:
-                                            shape = slide.Shapes(j)
-                                            # 删除任何额外的形状（包括可能重新出现的占位符）
-                                            shape.Delete()
-                                            self.log(f"删除了额外的形状/占位符")
-                                        except:
-                                            pass
+                                            shape_id = shape.Id
+                                        except Exception:
+                                            shape_id = None
+                                        if bg_shape_id is not None and shape_id == bg_shape_id:
+                                            continue
+                                        shape.Delete()
+                                        self.log("删除了额外的形状/占位符")
+                                    except Exception:
+                                        pass
                             except Exception as e:
                                 self.log(f"最终清理时出错: {e}")
                         
@@ -653,7 +706,6 @@ class PPTToImageSlidesGUI:
             try:
                 if save_success:
                     # 等待保存完成
-                    import time
                     time.sleep(0.5)
                 
                 # 尝试关闭演示文稿
@@ -665,7 +717,7 @@ class PPTToImageSlidesGUI:
                 # 尝试强制关闭
                 try:
                     powerpoint.Presentations.Close()
-                except:
+                except Exception:
                     pass
             
             if save_success:
@@ -678,7 +730,6 @@ class PPTToImageSlidesGUI:
             
         except Exception as e:
             self.log(f"转换过程发生错误: {e}")
-            import traceback
             self.log("详细错误信息:")
             self.log(traceback.format_exc())
             return False
@@ -703,7 +754,6 @@ class PPTToImageSlidesGUI:
                             self.log(f"关闭演示文稿 {i} 失败: {close_err}")
                     
                     # 等待一下再退出PowerPoint
-                    import time
                     time.sleep(0.5)
                     
             except Exception as cleanup_error:
@@ -725,19 +775,15 @@ class PPTToImageSlidesGUI:
             if 'temp_dir' in locals() and temp_dir and os.path.exists(temp_dir):
                 try:
                     # 等待一下确保文件不被占用
-                    import time
                     time.sleep(0.5)
-                    shutil.rmtree(temp_dir)
-                    self.log(f"清理临时目录: {temp_dir}")
+                    # ignore_errors=True：避免个别文件仍被占用导致整体失败
+                    shutil.rmtree(temp_dir, ignore_errors=True)
+                    if os.path.exists(temp_dir):
+                        self.log(f"临时目录未能完全删除，可能需要手动清理: {temp_dir}")
+                    else:
+                        self.log(f"清理临时目录: {temp_dir}")
                 except Exception as e:
                     self.log(f"清理临时目录失败: {e}")
-                    # 尝试强制清理
-                    try:
-                        import subprocess
-                        subprocess.run(['rmdir', '/s', '/q', temp_dir], shell=True, check=False)
-                        self.log("强制清理临时目录完成")
-                    except:
-                        self.log("强制清理也失败，临时文件可能需要手动删除")
             
             self.log("资源清理完成")
         

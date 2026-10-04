@@ -1,0 +1,20 @@
+{
+  "name": "ppt2img-poc",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 4173"
+  },
+  "dependencies": {
+    "@zumer/snapdom": "^2.24.18",
+    "jszip": "^3.10.1",
+    "pptx-preview": "^1.0.5",
+    "pptxgenjs": "^3.12.0"
+  },
+  "devDependencies": {
+    "vite": "^5.4.21"
+  }
+}
