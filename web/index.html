@@ -10,40 +10,48 @@
     />
     <meta
       name="description"
-      content="在浏览器本地把 .pptx 每页渲染成图片，并重建为「图片作幻灯片真背景」的 .pptx。文件不上传服务器。"
+      content="在浏览器本地把 .pptx 每页渲染成图片，并重建为「图片作幻灯片真背景」的 .pptx。文件不上传服务器。Renders .pptx slides to images in your browser and rebuilds a .pptx with them as true slide backgrounds. Nothing is uploaded."
     />
   </head>
   <body>
     <header class="hero">
-      <h1>PPT → 图片背景版 PPTX</h1>
-      <p class="sub">
-        在浏览器内把每页渲染成图片，再重建为「图片作幻灯片真背景」的
-        <code>.pptx</code>，避免换机器后字体缺失与排版错乱。
+      <div class="hero-row">
+        <h1 data-i18n="appTitle">PPT → 图片背景版 PPTX</h1>
+        <label class="lang">
+          <span data-i18n="langLabel">语言</span>
+          <select id="lang">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+        </label>
+      </div>
+      <p class="sub" data-i18n="appSub">
+        在浏览器内把每页渲染成图片，再重建为「图片作幻灯片真背景」的 <code>.pptx</code>，避免换机器后字体缺失与排版错乱。
       </p>
-      <p class="privacy">文件不会上传：解析、渲染、出图、打包全部在本机浏览器内完成。</p>
+      <p class="privacy" data-i18n="privacy">文件不会上传：解析、渲染、出图、打包全部在本机浏览器内完成。</p>
     </header>
 
     <main>
       <section class="card">
-        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="选择或拖入 pptx 文件">
+        <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="pptx">
           <input
             id="file"
             type="file"
             accept=".pptx,application/vnd.openxmlformats-officedocument.presentationml.presentation"
             hidden
           />
-          <p class="dz-title" id="dz-title">选择或拖入 .pptx 文件</p>
-          <p class="dz-hint" id="filemeta">上限 100 MB · 仅支持未加密的 .pptx（不支持 .ppt）</p>
+          <p class="dz-title" id="dz-title" data-i18n="dropTitle">选择或拖入 .pptx 文件</p>
+          <p class="dz-hint" id="filemeta"></p>
         </div>
 
         <fieldset class="qos">
-          <legend>输出质量</legend>
+          <legend data-i18n="qosLegend">输出质量</legend>
           <div id="qos-options" class="qos-options"></div>
         </fieldset>
 
         <div class="actions">
-          <button id="convert" type="button" disabled>开始转换</button>
-          <button id="cancel" type="button" class="ghost" hidden>取消</button>
+          <button id="convert" type="button" disabled data-i18n="btnConvert">开始转换</button>
+          <button id="cancel" type="button" class="ghost" hidden data-i18n="btnCancel">取消</button>
           <a id="download" class="download" download hidden>下载结果 PPTX</a>
         </div>
 
@@ -54,37 +62,42 @@
       </section>
 
       <section class="card">
-        <h2>输出结构自检</h2>
+        <h2 data-i18n="hVerify">输出结构自检</h2>
         <pre id="verify" class="verify">（尚未运行）</pre>
       </section>
 
       <section class="card">
-        <h2>页面预览</h2>
-        <p class="hint">
-          下面就是将被嵌入结果文件的图片（缩略图）。请确认无误后再下载 ——
-          应用内无法回读验证 pptx 的背景渲染效果。
+        <h2 data-i18n="hPreview">页面预览</h2>
+        <p class="hint" data-i18n="previewHint">
+          下面就是将被嵌入结果文件的图片（缩略图）。请确认无误后再下载 —— 应用内无法回读验证 pptx 的背景渲染效果。
         </p>
         <div id="thumbs" class="thumbs"></div>
       </section>
 
       <section class="card">
-        <h2>运行日志</h2>
+        <h2 data-i18n="hLog">运行日志</h2>
         <pre id="log" class="log"></pre>
       </section>
     </main>
 
     <footer class="foot">
-      <h3>已知限制</h3>
+      <h3 data-i18n="hLimits">已知限制</h3>
       <ul>
-        <li>仅支持未加密的 <code>.pptx</code>；不支持 97-2003 的 <code>.ppt</code>。</li>
-        <li>输出为静态图片页：<strong>动画、切换效果、演讲者备注、可编辑文本均不保留</strong>。</li>
-        <li>渲染使用<strong>你本机的字体</strong>。若系统缺少原稿字体（如微软雅黑、等线），文字可能换行或溢出。</li>
-        <li>页数多、分辨率高的文件受浏览器内存限制；手机与低配设备请选「小体积」档。</li>
-        <li>转换期间请<strong>保持本标签页在前台</strong>：浏览器会挂起后台标签页的渲染，转换将暂停（切回后自动继续）。</li>
+        <li data-i18n="limitPptx">仅支持未加密的 <code>.pptx</code>；不支持 97-2003 的 <code>.ppt</code>。</li>
+        <li data-i18n="limitStatic">
+          输出为静态图片页：<strong>动画、切换效果、可编辑文本均不保留</strong>；演讲者备注以<strong>纯文本</strong>保留（格式不保留）。
+        </li>
+        <li data-i18n="limitFonts">
+          渲染使用<strong>你本机的字体</strong>。若系统缺少原稿字体（如微软雅黑、等线），文字可能换行或溢出。
+        </li>
+        <li data-i18n="limitMemory">页数多、分辨率高的文件受浏览器内存限制；手机与低配设备请选「小体积」档。</li>
+        <li data-i18n="limitForeground">
+          转换期间请<strong>保持本标签页在前台</strong>：浏览器会挂起后台标签页的渲染，转换将暂停（切回后自动继续）。
+        </li>
       </ul>
       <p class="hint">
-        开源在 GitHub · 由 GitHub Actions 构建并部署到 GitHub Pages ·
-        <a href="https://github.com/coperlm/ppt-to-image-slides">查看源码</a>
+        <span data-i18n="footerLine">开源在 GitHub · 由 GitHub Actions 构建并部署到 GitHub Pages ·</span>
+        <a href="https://github.com/coperlm/ppt-to-image-slides" data-i18n="footerSource">查看源码</a>
       </p>
     </footer>
 

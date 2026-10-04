@@ -1,12 +1,20 @@
 import { RENDER_WIDTH } from './config'
 import type { SlideSize } from './guards'
 
-export interface Rendered {
-  slideEls: HTMLElement[]
+export interface SlideRenderer {
+  slideCount: number
+  /** 渲染指定页并返回其元素；保证 DOM 中同时只驻留一页，避免整副 deck 常驻内存 */
+  renderSlide(index: number): Promise<HTMLElement>
   destroy(): void
 }
 
-export async function renderPptx(buffer: ArrayBuffer, sldSz: SlideSize): Promise<Rendered> {
+/**
+ * 用 mode:'slide' 逐页渲染。列表模式会把全部页面的 DOM（含所有内嵌图片的 base64）
+ * 一次性常驻，百页级输入会直接压垮标签页；slide 模式下 renderSingleSlide 会先移除
+ * 上一页，内存峰值与页数无关。翻页按钮和分页器挂在 slide wrapper 的同级，
+ * 只截 wrapper 就不会把它们烤进背景图。
+ */
+export async function createRenderer(buffer: ArrayBuffer, sldSz: SlideSize): Promise<SlideRenderer> {
   const { init } = await import('pptx-preview')
   const height = Math.round((RENDER_WIDTH * sldSz.cy) / sldSz.cx)
 
@@ -14,7 +22,7 @@ export async function renderPptx(buffer: ArrayBuffer, sldSz: SlideSize): Promise
   host.className = 'render-host'
   document.body.appendChild(host)
 
-  const previewer = init(host, { width: RENDER_WIDTH, height, mode: 'list' })
+  const previewer = init(host, { width: RENDER_WIDTH, height, mode: 'slide' })
   try {
     await previewer.preview(buffer)
     await waitForRender(host)
@@ -23,11 +31,17 @@ export async function renderPptx(buffer: ArrayBuffer, sldSz: SlideSize): Promise
     throw error
   }
 
-  const wrappers = Array.from(host.querySelectorAll<HTMLElement>('.pptx-preview-slide-wrapper'))
-  const slideEls = wrappers.length ? wrappers : (Array.from(host.children) as HTMLElement[])
-
   return {
-    slideEls,
+    slideCount: previewer.slideCount,
+    async renderSlide(index) {
+      if (index > 0) {
+        previewer.renderSingleSlide(index)
+        await waitForRender(host)
+      }
+      const el = host.querySelector<HTMLElement>('.pptx-preview-slide-wrapper')
+      if (!el) throw new Error(`第 ${index + 1} 页渲染后未找到页面元素`)
+      return el
+    },
     destroy() {
       try {
         previewer.destroy()

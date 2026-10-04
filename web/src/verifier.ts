@@ -1,5 +1,6 @@
 import JSZip from 'jszip'
 import { NS_A, NS_P, NS_R, normalizePartPath, parseXml, slideNumberOf } from './guards'
+import { t } from './i18n'
 
 export interface SlideCheck {
   index: number
@@ -36,14 +37,14 @@ export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Prom
     const index = offset + 1
     const file = zip.file(path)
     if (!file) {
-      problems.push(`第 ${index} 页：${path} 无法读取`)
+      problems.push(t('verUnreadable', { index, path }))
       slides.push({ index, path, mediaPath: null, ok: false })
       continue
     }
 
     const embedId = findBackgroundEmbedId(await file.async('string'))
     if (!embedId) {
-      problems.push(`第 ${index} 页：未找到 <p:bg> + <a:blipFill> 背景`)
+      problems.push(t('verNoBg', { index }))
       slides.push({ index, path, mediaPath: null, ok: false })
       continue
     }
@@ -51,7 +52,7 @@ export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Prom
     const mediaPath = await resolveRelationship(zip, path, embedId)
     const mediaFile = mediaPath ? zip.file(mediaPath) : null
     if (!mediaPath || !mediaFile) {
-      problems.push(`第 ${index} 页：背景关系 ${embedId} 未解析到包内图片`)
+      problems.push(t('verUnresolved', { index, id: embedId }))
       slides.push({ index, path, mediaPath, ok: false })
       continue
     }
@@ -64,20 +65,20 @@ export async function verifyOutputPptx(blob: Blob, expectedSlides: number): Prom
     if (mismatch) {
       problems.push(
         actual === 'unknown'
-          ? `第 ${index} 页：背景图 ${mediaPath} 不是可识别的 JPEG/PNG`
-          : `第 ${index} 页：背景图 ${mediaPath} 声明为 ${declared}，实际字节是 ${actual}`,
+          ? t('verUnknownImage', { index, path: mediaPath })
+          : t('verMismatch', { index, path: mediaPath, declared, actual }),
       )
     }
     slides.push({ index, path, mediaPath, ok: !mismatch })
   }
 
   if (slidePaths.length !== expectedSlides) {
-    problems.push(`页数不符：期望 ${expectedSlides} 页，实际输出 ${slidePaths.length} 页`)
+    problems.push(t('verPageCount', { expected: expectedSlides, actual: slidePaths.length }))
   }
 
   const withBackground = slides.filter((slide) => slide.ok).length
   if (mediaCount < withBackground) {
-    problems.push(`media 图片数 ${mediaCount} 少于带背景的页数 ${withBackground}`)
+    problems.push(t('verMediaCount', { media: mediaCount, withBg: withBackground }))
   }
 
   return {

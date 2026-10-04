@@ -36,15 +36,20 @@ A pure-frontend port lives in [`web/`](web): it renders each slide inside the br
 
 - **Runs entirely in your browser.** The file is never uploaded; parsing, rendering and packing all happen locally.
 - Works on Windows / macOS / Linux / mobile — no PowerPoint, no Python, nothing to install.
+- Legacy `.ppt` (97-2003 binary) is not supported and cannot be: it is an OLE2 compound document, not a ZIP of XML, and no browser-side engine can lay it out. Open it in PowerPoint/WPS and **Save As `.pptx`** first — one click, then the whole pipeline works.
 - Deployed to GitHub Pages by GitHub Actions ([`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml)) on every push to `main`.
 
 Run it locally:
 
 ```
 cd web
-npm install
-npm run dev      # http://127.0.0.1:5174
+npm install --include=dev
+npm run dev        # http://127.0.0.1:5174
+npm test           # unit tests (vitest + jsdom)
+npm run test:e2e   # end-to-end in headless Chromium (Playwright)
 ```
+
+Fidelity evaluation tooling (reference renders + corpus checklist) lives in [`web/tools/fidelity/`](web/tools/fidelity/corpus.md).
 
 How it differs from the desktop tool:
 
@@ -52,7 +57,7 @@ How it differs from the desktop tool:
 |---|---|---|
 | Rendering engine | Real PowerPoint via COM | `pptx-preview` in the browser |
 | Input | `.ppt` and `.pptx` | unencrypted `.pptx` only |
-| Speaker notes | Preserved (the original file is reused as a template) | Not preserved |
+| Speaker notes | Preserved (the original file is reused as a template) | Preserved as plain text (formatting is dropped) |
 | Fidelity | Exact | Depends on the fonts installed on your machine |
 | Requires | Windows + Office | Any modern browser |
 

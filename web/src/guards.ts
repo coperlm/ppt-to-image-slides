@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import { LIMITS } from './config'
 import { fmtBytes } from './format'
+import { t } from './i18n'
 
 export const NS_P = 'http://schemas.openxmlformats.org/presentationml/2006/main'
 export const NS_A = 'http://schemas.openxmlformats.org/drawingml/2006/main'
@@ -26,10 +27,10 @@ export interface Guarded {
 
 export async function guardAndRead(file: File, limits = LIMITS): Promise<Guarded> {
   if (!file.name.toLowerCase().endsWith('.pptx')) {
-    throw new Error(`不支持的文件类型：${file.name}（仅支持未加密的 .pptx）`)
+    throw new Error(t('errUnsupported', { name: file.name }))
   }
   if (file.size > limits.maxInputBytes) {
-    throw new Error(`文件 ${fmtBytes(file.size)} 超过上限 ${fmtBytes(limits.maxInputBytes)}`)
+    throw new Error(t('errTooBig', { size: fmtBytes(file.size), limit: fmtBytes(limits.maxInputBytes) }))
   }
   await assertZipContainer(file)
 
@@ -39,20 +40,20 @@ export async function guardAndRead(file: File, limits = LIMITS): Promise<Guarded
   const uncompressedBytes = estimateUncompressedBytes(zip)
   if (uncompressedBytes > limits.maxUncompressedBytes) {
     throw new Error(
-      `解压后约 ${fmtBytes(uncompressedBytes)}，超过上限 ${fmtBytes(limits.maxUncompressedBytes)}（防 zip 炸弹，已拒绝）`,
+      t('errZipBomb', { size: fmtBytes(uncompressedBytes), limit: fmtBytes(limits.maxUncompressedBytes) }),
     )
   }
 
   const presentationFile = zip.file('ppt/presentation.xml')
-  if (!presentationFile) throw new Error('缺少 ppt/presentation.xml，不是有效的 .pptx')
+  if (!presentationFile) throw new Error(t('errNoPresentation'))
   const presentationXml = await presentationFile.async('string')
 
   const sldSz = readSlideSize(presentationXml)
   const listed = await resolveSlidePaths(zip, presentationXml)
   const slidePaths = listed.length ? listed : scanSlidePaths(zip)
-  if (!slidePaths.length) throw new Error('演示文稿中没有幻灯片')
+  if (!slidePaths.length) throw new Error(t('errNoSlides'))
   if (slidePaths.length > limits.maxSlides) {
-    throw new Error(`幻灯片 ${slidePaths.length} 页，超过上限 ${limits.maxSlides} 页`)
+    throw new Error(t('errTooManySlides', { count: slidePaths.length, limit: limits.maxSlides }))
   }
 
   return {
@@ -69,10 +70,10 @@ export async function guardAndRead(file: File, limits = LIMITS): Promise<Guarded
 async function assertZipContainer(file: File): Promise<void> {
   const head = new Uint8Array(await file.slice(0, 4).arrayBuffer())
   if (head[0] === 0xd0 && head[1] === 0xcf && head[2] === 0x11 && head[3] === 0xe0) {
-    throw new Error('文件已加密，或为 97-2003 的 .ppt 二进制格式；本工具仅支持未加密的 .pptx')
+    throw new Error(t('errCfb'))
   }
   if (head[0] !== 0x50 || head[1] !== 0x4b) {
-    throw new Error('不是有效的 .pptx（缺少 ZIP 文件头 PK）')
+    throw new Error(t('errNotZip'))
   }
 }
 
@@ -89,7 +90,7 @@ function estimateUncompressedBytes(zip: JSZip): number {
 export function parseXml(text: string): Document {
   const doc = new DOMParser().parseFromString(text, 'application/xml')
   const failure = doc.querySelector('parsererror')
-  if (failure) throw new Error(`XML 解析失败：${(failure.textContent ?? '').slice(0, 160)}`)
+  if (failure) throw new Error(t('errXml', { detail: (failure.textContent ?? '').slice(0, 160) }))
   return doc
 }
 

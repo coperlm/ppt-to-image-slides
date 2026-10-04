@@ -15,9 +15,10 @@
 ## 1. 范围
 
 **做**：单个 `.pptx` 输入（OOXML，未加密）；单个 `.pptx` 输出（每页一张全屏图作背景）；纯前端静态托管；输入上限默认 100 MB、页数上限 200（均为**浏览器内存自限**，不是 GitHub 平台限制——Pages 的 100 MiB 限制针对仓库文件，与客户端能处理多大无关）。
-**不做**：`.ppt`（97-2003 二进制）；PDF / 图片 ZIP 输出；像素级一致（目标是「肉眼难辨」）；**演讲者备注 / 母版主题 / 动画与切换效果的保留**（PptxGenJS 从零建包，这些部件不会带过去）。
+**不做**：`.ppt`（97-2003 二进制，OLE2/CFB，浏览器内无解析+排版引擎，见 §14）；PDF / 图片 ZIP 输出；像素级一致（目标是「肉眼难辨」）；母版主题 / 动画与切换效果的保留。
+**备注**：以**纯文本**保留——从输入的 `notesSlides` 抽取正文占位符文本，回填到 PptxGenJS 输出包自带的空 `notesSlide` 部件（rels 与 Content_Types 不动），格式不保留。
 
-> 备注这一项是与桌面版的**功能回退**：`main.py` 是把原文件重新打开当模板、逐页清空形状再设背景，所以 `notesSlides`、母版、切换效果都原样保留。若后续要补，最省力的路径是绕过 PptxGenJS 自行用 JSZip 组包（见 §9），顺带把 `ppt/notesSlides/*` 及其 rels 注入。当前决定：先不做，UI 与 README 已明示。
+> 与桌面版的差异：`main.py` 把原文件重新打开当模板，所以备注/母版/切换效果**连格式一起**保留；web 版只保备注文本。若将来要连格式保留，路径是绕过 PptxGenJS 自行用 JSZip 组包（见 §9），把输入的 `ppt/notesSlides/*` 及其 rels 原样注入。
 
 ---
 
@@ -56,7 +57,7 @@
 "typescript":   "^5.6.3"       // 5.9.3；npm run build = tsc --noEmit && vite build
 ```
 
-> 未引入测试框架（vitest / playwright）。`guards.ts`、`verifier.ts`、`normalizePartPath` 都是纯函数，加单测成本很低；整条流水线也可以用 Playwright + 仓库里的 `PPT_test.pptx`（456 KB，适合当 fixture）做 headless 冒烟并进 CI。列为 M1 遗留项。
+> 测试已补齐：`vitest`（jsdom 环境）单测 `guards` / `verifier` / `notes` 共 16 例（含用 JSZip 现造假包验证 magic/扩展名判据与备注注入）；`@playwright/test` 冒烟 5 例（整条流水线、非 pptx 拒绝、CFB 拒绝、英文切换、备注保留），headless Chromium 约 17 s。两者都进了 CI（见 §11）。注意本机 shell 若带 `NODE_ENV=production`，npm 会剪掉 devDependencies，本地跑测试要 `npm install --include=dev`。
 
 ---
 
@@ -224,7 +225,7 @@ File(.pptx)
 **待办 / 未验证**：
 - 内存峰值只在 11 页 / 456 KB 样本上跑过；**100 MB 或上百页输入的峰值仍未实测**，`maxSlides` 暂设 200 是保守值，需要实测后再定。
 - 编码搬到 Web Worker（`createImageBitmap` + `OffscreenCanvas.convertToBlob`）未做：snapdom 必须在 DOM 侧，能搬走的只有 JPEG 编码那一段，收益待评估。
-- `pptx-preview`  typings 里有 `renderSingleSlide(i)` / `removeCurrentSlide()` / `mode:'slide'`，理论上能把「整副 deck 的 DOM 常驻」降为「单页常驻」，是解决大文件内存的正解。**尚未验证运行时行为**（`mode:'slide'` 还会插入翻页按钮和分页 DOM，出图时必须只截 slide wrapper）。列为大文件支持的前置 spike。
+- ~~逐页渲染 spike~~ **已落地**：renderer 改用 `mode:'slide'` + `renderSingleSlide(i)` + `removeCurrentSlide()`，DOM 中同时只驻留一页，内存峰值与页数解耦。已确认翻页按钮/分页器挂在 slide wrapper 的**同级**，只截 wrapper 不会烤进背景图；列表模式则完全不加分页器。headless Chromium 端到端 7.2 s 通过。
 
 ---
 
@@ -282,7 +283,7 @@ jobs:
 ## 12. 里程碑（可勾选）
 
 - [x] **M1 工程化**：`web/`（Vite+TS）已按 §5 建好，档位、串行流水线、进度/日志/缩略图/自检面板、取消均已实现；`PPT_test.pptx` 11 页跑通，结构自检 PASS（11/11 背景关系解析到包内 JPEG）。
-     遗留：`tsc --noEmit` 已进 build，但**没有单元测试与 headless 冒烟测试**（§3 未引入 vitest/playwright）。
+     测试已补齐并进 CI（见 §3 注）。
 - [ ] **M2 保真度评测与调优**（2–3 天）：按 §13 语料集逐类比对，记录差异；调档位与字体策略。
      交付：评测报告（逐类 pass/fail + 截图）+ 修正后各档的实测体积/耗时（§6 目前是待实测）。
      验收：文字/图文/表格/图表四类「肉眼可辨为一致」。
@@ -317,9 +318,9 @@ jobs:
 1. **客户端字体不可控（公网部署后的头号保真度风险）**：渲染用的是**访问者本机**的字体。Windows 有微软雅黑/等线，macOS 是苹方，Linux 常缺 → 同一份 pptx 在不同机器上换行与溢出程度不同，本机 Chromium 上测出的保真度不代表用户所见。CJK 全量字体无法内嵌，不可根治。缓解：UI/README 明示；文字型 deck 可考虑提供 `reconcile` 开关（带耗时预警）；M2 语料至少在两台字体环境不同的机器上各跑一遍。
 2. **只在 Chromium 上验证过**：snapdom 走 SVG foreignObject，Safari 在这条路上历史问题最多，Firefox 性能也不同，iOS Safari 还有 canvas 面积上限。M2 需补浏览器矩阵（Chrome / Firefox / Safari 各一）。
 3. `pptx-preview` 保真度上限（M2 前置信度：中）；SmartArt/艺术字/公式为主要风险。图表由 echarts 异步绘制，就绪判定已改为「图片加载完 + DOM 静默期」而非固定 sleep，但仍需 M2 在图表语料上确认不会截到半成品。
-4. 内存峰值只在 11 页小样本上验证过；**100 MB / 上百页未实测**。正解是把渲染改成逐页（`renderSingleSlide`），见 §9 待办。
+4. 内存峰值只在 11 页小样本上验证过；**100 MB / 上百页未实测**。逐页渲染已落地（§9），峰值与页数解耦，但大输入的绝对峰值仍待实测后再定 `maxSlides`。
 5. **转换要求标签页在前台**：后台标签页会被节流到极慢（实测首页 231 s，见 §2-7），但不会丢进度。已在 UI 与页脚提示；未验证的是「后台几十分钟后再切回」的恢复情况。
-6. 备注/母版/动画丢失（见 §1）——对讲课类 deck 是实际回退。
+6. 母版/动画/切换效果丢失（见 §1）。备注已改为**纯文本保留**（格式不保），讲课场景的主要回退已消除。
 7. 应用内无法视觉自验背景渲染（`pptx-preview` 不渲染背景）→ 已用「出图缩略图即嵌入内容 + 结构自检 + 下载前人工核对」的 UX 替代，并在页面上写明。
 8. 单一渲染依赖 `pptx-preview`：实装 1.0.7，license **ISC**，作者为个人（package.json 的 author 字段是微信号），无组织维护 → 锁 lockfile + 保留备选（`ChristopherVR/pptx-viewer`）；公开站点还应考虑依赖固定与构建可复现（CI 用 `npm ci`）。
 9. 文本重排：`reconcile` 代价过高（23×）；备选方案（确保字体可用 / 换渲染库）待 M2 评测。

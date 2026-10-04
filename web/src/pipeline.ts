@@ -1,9 +1,11 @@
 import type { Qos } from './config'
 import { errorMessage, fmtBytes, fmtSeconds, throwIfAborted, yieldToBrowser } from './format'
 import { guardAndRead, type SlideSize } from './guards'
+import { t } from './i18n'
+import { extractNotesTexts, injectNotes } from './notes'
 import { packBackgroundPptx } from './packer'
 import { placeholderSlide, rasterizeSlide } from './rasterizer'
-import { renderPptx } from './renderer'
+import { createRenderer } from './renderer'
 import { verifyOutputPptx, type VerifyResult } from './verifier'
 
 export interface PageResult {
@@ -60,53 +62,57 @@ export async function convert(
   }
   const started = performance.now()
 
-  stage('校验输入…')
+  stage(t('stageGuard'))
   const tGuard = performance.now()
   const guarded = await guardAndRead(file)
   const guardMs = performance.now() - tGuard
   log(
-    `页面尺寸 ${guarded.sldSz.cx}×${guarded.sldSz.cy} EMU` +
-      `${guarded.sldSz.found ? '' : '（未找到 sldSz，已按 16:9 兜底）'} · ` +
-      `页数 ${guarded.slideCount}（来源 ${guarded.slideCountSource}） · ` +
-      `解压后约 ${fmtBytes(guarded.uncompressedBytes)}`,
+    t('logMeta', {
+      cx: guarded.sldSz.cx,
+      cy: guarded.sldSz.cy,
+      count: guarded.slideCount,
+      source: guarded.slideCountSource,
+      uncompressed: fmtBytes(guarded.uncompressedBytes),
+    }) + (guarded.sldSz.found ? '' : t('logMetaSldSzMissing')),
   )
-  if (!guarded.sldSz.found) log('警告：缺少 <p:sldSz>，输出尺寸可能与原稿不一致')
-  if (guarded.slideCountSource === 'fileScan') log('警告：无法解析 sldIdLst，页数已回退为按文件扫描统计')
+  if (!guarded.sldSz.found) log(t('logWarnSldSz'))
+  if (guarded.slideCountSource === 'fileScan') log(t('logWarnFileScan'))
+  const notesTexts = await extractNotesTexts(guarded.zip, guarded.slidePaths)
+  const notedPages = notesTexts.filter((text) => text !== null).length
+  if (notedPages) log(t('logNotes', { count: notedPages }))
   throwIfAborted(signal)
 
   await document.fonts.ready
-  log('字体就绪（document.fonts.ready）')
+  log(t('logFonts'))
 
-  stage('渲染幻灯片…')
+  stage(t('stageRender'))
   const tRender = performance.now()
-  const rendered = await renderPptx(guarded.buffer, guarded.sldSz)
+  const renderer = await createRenderer(guarded.buffer, guarded.sldSz)
   const renderMs = performance.now() - tRender
-  log(`渲染出 ${rendered.slideEls.length} 个页面 DOM，用时 ${fmtSeconds(renderMs)}`)
+  log(t('logRenderer', { ms: fmtSeconds(renderMs) }))
 
-  if (rendered.slideEls.length !== guarded.slideCount) {
-    rendered.destroy()
-    throw new Error(
-      `渲染页数 ${rendered.slideEls.length} 与文件页数 ${guarded.slideCount} 不一致，已中止以免输出缺页`,
-    )
+  if (renderer.slideCount !== guarded.slideCount) {
+    renderer.destroy()
+    throw new Error(t('errRenderCount', { rendered: renderer.slideCount, expected: guarded.slideCount }))
   }
   throwIfAborted(signal)
 
-  stage('逐页出图…')
+  stage(t('stageRaster'))
   const tRaster = performance.now()
   const images: string[] = []
   const pages: PageResult[] = []
-  for (const [offset, el] of rendered.slideEls.entries()) {
+  for (let offset = 0; offset < renderer.slideCount; offset++) {
     throwIfAborted(signal)
     const index = offset + 1
     const tPage = performance.now()
     let raster
     let pageError: string | undefined
     try {
-      raster = await rasterizeSlide(el, qos)
+      raster = await rasterizeSlide(await renderer.renderSlide(offset), qos)
     } catch (error) {
       pageError = errorMessage(error)
-      raster = placeholderSlide(guarded.sldSz.cx, guarded.sldSz.cy, `第 ${index} 页渲染失败`)
-      log(`第 ${index} 页出图失败：${pageError} → 已用占位页替代`)
+      raster = placeholderSlide(guarded.sldSz.cx, guarded.sldSz.cy, t('placeholder', { index }))
+      log(t('logPageFail', { index, message: pageError }))
     }
     images.push(raster.dataUrl)
     const page: PageResult = {
@@ -119,30 +125,34 @@ export async function convert(
       error: pageError,
     }
     pages.push(page)
-    hooks.onProgress?.(pages.length, rendered.slideEls.length, page)
+    hooks.onProgress?.(pages.length, renderer.slideCount, page)
     await yieldToBrowser()
   }
   const rasterMs = performance.now() - tRaster
-  rendered.destroy()
+  renderer.destroy()
 
   const failedPages = pages.filter((page) => !page.ok).map((page) => page.index)
-  if (failedPages.length) log(`警告：${failedPages.length} 页出图失败（第 ${failedPages.join('、')} 页）`)
+  if (failedPages.length) log(t('logWarnFailed', { count: failedPages.length, pages: failedPages.join('、') }))
 
-  stage('重建 PPTX…')
+  stage(t('stagePack'))
   const tPack = performance.now()
-  const blob = await packBackgroundPptx(images, guarded.sldSz)
-  const packMs = performance.now() - tPack
+  let output = await packBackgroundPptx(images, guarded.sldSz)
   images.length = 0
-  log(`输出 ${fmtBytes(blob.size)}，打包用时 ${fmtSeconds(packMs)}`)
+  if (notedPages) {
+    output = await injectNotes(output, notesTexts)
+    log(t('logNotesInjected', { count: notedPages }))
+  }
+  const packMs = performance.now() - tPack
+  log(t('logOutput', { size: fmtBytes(output.size), ms: fmtSeconds(packMs) }))
   throwIfAborted(signal)
 
-  stage('结构自检…')
+  stage(t('stageVerify'))
   const tVerify = performance.now()
-  const verify = await verifyOutputPptx(blob, guarded.slideCount)
+  const verify = await verifyOutputPptx(output, guarded.slideCount)
   const verifyMs = performance.now() - tVerify
 
   return {
-    blob,
+    blob: output,
     fileName: `${file.name.replace(/\.pptx$/i, '')}_image.pptx`,
     verify,
     stats: {
@@ -152,7 +162,7 @@ export async function convert(
       rasterMs,
       packMs,
       verifyMs,
-      outputBytes: blob.size,
+      outputBytes: output.size,
       okPages: pages.length - failedPages.length,
       failedPages,
     },

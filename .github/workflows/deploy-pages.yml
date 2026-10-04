@@ -42,6 +42,18 @@ jobs:
         run: npm run build
         working-directory: web
 
+      - name: Unit tests
+        run: npm test
+        working-directory: web
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+        working-directory: web
+
+      - name: E2E tests
+        run: npm run test:e2e
+        working-directory: web
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: web/dist

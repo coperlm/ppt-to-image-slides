@@ -1,3 +1,5 @@
+import { t } from './i18n'
+
 export function fmtBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
@@ -18,7 +20,7 @@ export function yieldToBrowser(): Promise<void> {
 }
 
 export function throwIfAborted(signal?: AbortSignal): void {
-  if (signal?.aborted) throw new DOMException('已取消转换', 'AbortError')
+  if (signal?.aborted) throw new DOMException(t('errAborted'), 'AbortError')
 }
 
 export function errorMessage(error: unknown): string {

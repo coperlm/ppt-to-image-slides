@@ -1,4 +1,5 @@
 import { LIMITS, type Qos } from './config'
+import { t } from './i18n'
 
 export interface Raster {
   dataUrl: string
@@ -10,7 +11,7 @@ export interface Raster {
 export async function rasterizeSlide(el: HTMLElement, qos: Qos): Promise<Raster> {
   const { snapdom } = await import('@zumer/snapdom')
   const longEdge = Math.max(el.offsetWidth, el.offsetHeight)
-  if (!longEdge) throw new Error('幻灯片元素尺寸为 0，无法出图')
+  if (!longEdge) throw new Error(t('errZeroSize'))
 
   // snapdom 的出图基准是 display box × scale × dpr；固定 dpr=1，否则输出分辨率会随用户设备的
   // devicePixelRatio（HiDPI / 浏览器缩放）漂移，同一档位在不同机器上体积和清晰度都不一样
@@ -36,7 +37,7 @@ export function placeholderSlide(cx: number, cy: number, label: string): Raster 
   canvas.width = width
   canvas.height = height
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('浏览器拒绝创建 2D 画布')
+  if (!ctx) throw new Error(t('errNoCanvas'))
 
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, width, height)

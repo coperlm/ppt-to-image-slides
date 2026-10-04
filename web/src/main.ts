@@ -1,11 +1,12 @@
 import './styles.css'
-import { DEFAULT_QOS, LIMITS, QOS, QOS_ORDER, type QosName } from './config'
+import { DEFAULT_QOS, LIMITS, QOS, QOS_ORDER, QOS_STORAGE_KEY, type QosName } from './config'
 import { errorMessage, fmtBytes, fmtSeconds } from './format'
+import { getLang, setLang, t, type Lang } from './i18n'
 import { convert, type ConvertResult, type PageResult } from './pipeline'
 
 function el<T extends HTMLElement>(id: string): T {
   const node = document.getElementById(id)
-  if (!node) throw new Error(`页面缺少元素 #${id}`)
+  if (!node) throw new Error(`page is missing #${id}`)
   return node as T
 }
 
@@ -23,10 +24,12 @@ const progressBar = el<HTMLDivElement>('progress-bar')
 const verifyEl = el<HTMLPreElement>('verify')
 const thumbsEl = el<HTMLDivElement>('thumbs')
 const logEl = el<HTMLPreElement>('log')
+const langSelect = el<HTMLSelectElement>('lang')
 
 let selectedFile: File | null = null
 let controller: AbortController | null = null
 let resultUrl: string | null = null
+let lastResult: ConvertResult | null = null
 
 function log(message: string): void {
   logEl.textContent += `${message}\n`
@@ -50,13 +53,13 @@ function addThumb(page: PageResult): void {
   box.className = page.ok ? 'thumb' : 'thumb failed'
   const img = document.createElement('img')
   img.src = page.thumbUrl
-  img.alt = `第 ${page.index} 页`
+  img.alt = `${page.index}`
   img.loading = 'lazy'
   const cap = document.createElement('div')
   cap.className = 'cap'
   cap.textContent = page.ok
-    ? `第 ${page.index} 页 · ${page.width}×${page.height} · ${Math.round(page.ms)} ms`
-    : `第 ${page.index} 页 · 渲染失败（已用占位页）`
+    ? t('capPage', { index: page.index, w: page.width, h: page.height, ms: Math.round(page.ms) })
+    : t('capPageFailed', { index: page.index })
   box.append(img, cap)
   thumbsEl.appendChild(box)
 }
@@ -66,7 +69,18 @@ function selectedQos(): QosName {
   return (checked?.value as QosName) ?? DEFAULT_QOS
 }
 
+function storedQos(): QosName {
+  try {
+    const stored = localStorage.getItem(QOS_STORAGE_KEY) as QosName | null
+    return stored && QOS_ORDER.includes(stored) ? stored : DEFAULT_QOS
+  } catch {
+    return DEFAULT_QOS
+  }
+}
+
 function buildQosOptions(): void {
+  qosOptions.textContent = ''
+  const preferred = storedQos()
   for (const name of QOS_ORDER) {
     const qos = QOS[name]
     const label = document.createElement('label')
@@ -76,15 +90,15 @@ function buildQosOptions(): void {
     input.type = 'radio'
     input.name = 'qos'
     input.value = name
-    input.checked = name === DEFAULT_QOS
+    input.checked = name === preferred
 
     const title = document.createElement('span')
     title.className = 'qos-name'
-    title.textContent = name === DEFAULT_QOS ? `${qos.label}（推荐）` : qos.label
+    title.textContent = t(qos.labelKey) + (name === DEFAULT_QOS ? t('qosRecommended') : '')
 
     const hint = document.createElement('span')
     hint.className = 'qos-hint'
-    hint.textContent = qos.hint
+    hint.textContent = t(qos.hintKey)
 
     label.append(input, title, hint)
     qosOptions.appendChild(label)
@@ -100,29 +114,19 @@ function updateButtons(): void {
 function acceptFile(file: File | null | undefined): void {
   if (!file || controller) return
   if (!file.name.toLowerCase().endsWith('.pptx')) {
-    setStatus(`不支持的文件类型：${file.name}（仅支持 .pptx）`, 'error')
+    setStatus(t('statusUnsupported', { name: file.name }), 'error')
     return
   }
   if (file.size > LIMITS.maxInputBytes) {
-    setStatus(`文件 ${fmtBytes(file.size)} 超过上限 ${fmtBytes(LIMITS.maxInputBytes)}`, 'error')
+    setStatus(t('statusTooBig', { size: fmtBytes(file.size), limit: fmtBytes(LIMITS.maxInputBytes) }), 'error')
     return
   }
   selectedFile = file
   dzTitle.textContent = file.name
-  fileMeta.textContent = `${fmtBytes(file.size)} · 上限 ${fmtBytes(LIMITS.maxInputBytes)}`
+  fileMeta.textContent = `${fmtBytes(file.size)} · ${t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })}`
   setStatus('')
-  log(`已选择：${file.name}（${fmtBytes(file.size)}）`)
+  log(t('logSelected', { name: file.name, size: fmtBytes(file.size) }))
   updateButtons()
-}
-
-function resetPanels(): void {
-  logEl.textContent = ''
-  thumbsEl.textContent = ''
-  verifyEl.textContent = '（运行中…）'
-  verifyEl.classList.remove('fail')
-  downloadLink.hidden = true
-  revokeResultUrl()
-  setProgress(0, 0)
 }
 
 function revokeResultUrl(): void {
@@ -132,27 +136,41 @@ function revokeResultUrl(): void {
   }
 }
 
+function resetPanels(): void {
+  logEl.textContent = ''
+  thumbsEl.textContent = ''
+  verifyEl.textContent = t('verifyRunning')
+  verifyEl.classList.remove('fail')
+  downloadLink.hidden = true
+  revokeResultUrl()
+  setProgress(0, 0)
+}
+
 function showResult(result: ConvertResult): void {
+  lastResult = result
   const { verify, stats } = result
   const lines = [
-    `输入页数:              ${result.slideCount}`,
-    `输出 slide XML 数:     ${verify.slideCount}`,
-    `背景图解析成功的页:    ${verify.withBackground}`,
-    `包内 media 图片数:     ${verify.mediaCount}`,
-    `输出文件大小:          ${fmtBytes(stats.outputBytes)}`,
-    `总耗时:                ${fmtSeconds(stats.totalMs)}（渲染 ${fmtSeconds(stats.renderMs)} / 出图 ${fmtSeconds(
-      stats.rasterMs,
-    )} / 打包 ${fmtSeconds(stats.packMs)}）`,
+    `${t('verifyInputPages')}              ${result.slideCount}`,
+    `${t('verifySlideXml')}     ${verify.slideCount}`,
+    `${t('verifyWithBg')}    ${verify.withBackground}`,
+    `${t('verifyMedia')}     ${verify.mediaCount}`,
+    `${t('verifySize')}          ${fmtBytes(stats.outputBytes)}`,
+    t('verifyTime', {
+      total: fmtSeconds(stats.totalMs),
+      render: fmtSeconds(stats.renderMs),
+      raster: fmtSeconds(stats.rasterMs),
+      pack: fmtSeconds(stats.packMs),
+    }),
     '',
   ]
   if (stats.failedPages.length) {
-    lines.push(`出图失败并替换为占位页: 第 ${stats.failedPages.join('、')} 页`, '')
+    lines.push(t('verifyFailedPages', { pages: stats.failedPages.join('、') }), '')
   }
   if (verify.ok) {
-    lines.push('判定: ✅ PASS —— 每页背景的 r:embed 均解析到包内图片，且字节与扩展名一致')
+    lines.push(t('verifyPass'))
     verifyEl.classList.remove('fail')
   } else {
-    lines.push('判定: ❌ FAIL', ...verify.problems.map((problem) => `  · ${problem}`))
+    lines.push(t('verifyFail'), ...verify.problems.map((problem) => `  · ${problem}`))
     verifyEl.classList.add('fail')
   }
   verifyEl.textContent = lines.join('\n')
@@ -160,7 +178,7 @@ function showResult(result: ConvertResult): void {
   setProgress(result.pages.length, result.pages.length)
   if (!verify.ok) {
     downloadLink.hidden = true
-    setStatus('结构自检未通过，已阻止下载（问题见上）', 'error')
+    setStatus(t('statusVerifyFail'), 'error')
     return
   }
 
@@ -168,14 +186,21 @@ function showResult(result: ConvertResult): void {
   resultUrl = URL.createObjectURL(result.blob)
   downloadLink.href = resultUrl
   downloadLink.download = result.fileName
-  downloadLink.textContent = `下载 ${result.fileName}（${fmtBytes(result.blob.size)}）`
+  downloadLink.textContent = t('download', { name: result.fileName, size: fmtBytes(result.blob.size) })
   downloadLink.hidden = false
   setStatus(
     stats.failedPages.length
-      ? `完成，但第 ${stats.failedPages.join('、')} 页为占位页，请核对预览后再下载`
-      : '完成，请核对预览后下载',
+      ? t('statusDoneDegraded', { pages: stats.failedPages.join('、') })
+      : t('statusDone'),
     stats.failedPages.length ? 'error' : 'done',
   )
+}
+
+function rerenderResult(): void {
+  thumbsEl.textContent = ''
+  if (!lastResult) return
+  for (const page of lastResult.pages) addThumb(page)
+  showResult(lastResult)
 }
 
 async function run(): Promise<void> {
@@ -183,22 +208,27 @@ async function run(): Promise<void> {
   if (!file || controller) return
 
   const qos = QOS[selectedQos()]
+  try {
+    localStorage.setItem(QOS_STORAGE_KEY, qos.name)
+  } catch {
+    // 隐私模式下 localStorage 可能不可用，忽略
+  }
   controller = new AbortController()
   updateButtons()
   resetPanels()
-  log(`开始转换 · 档位「${qos.label}」长边 ${qos.targetLongEdge}px · JPEG 质量 ${qos.quality}`)
+  log(t('logStart', { qos: t(qos.labelKey), edge: qos.targetLongEdge, quality: qos.quality }))
 
   try {
     const result = await convert(
       file,
       qos,
       {
-        onStage: (stage) => setStatus(`${stage}（${file.name}）`),
+        onStage: (stage) => setStatus(t('statusStage', { stage, name: file.name })),
         onLog: log,
         onProgress: (done, total, page) => {
           setProgress(done, total)
           addThumb(page)
-          setStatus(`逐页出图 ${done}/${total}（${file.name}）`)
+          setStatus(t('statusRaster', { done, total, name: file.name }))
         },
       },
       controller.signal,
@@ -206,18 +236,43 @@ async function run(): Promise<void> {
     showResult(result)
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
-      setStatus('已取消', 'done')
-      log('已取消')
+      setStatus(t('statusCancelled'), 'done')
+      log(t('logCancelled'))
     } else {
       const message = errorMessage(error)
-      setStatus(`转换失败：${message}`, 'error')
-      verifyEl.textContent = `失败：${message}`
+      setStatus(t('statusFailed', { message }), 'error')
+      verifyEl.textContent = t('verifyFailLine', { message })
       verifyEl.classList.add('fail')
-      log(`❌ ${message}`)
+      log(t('logFailed', { message }))
     }
   } finally {
     controller = null
     updateButtons()
+  }
+}
+
+/** 静态文案统一走 data-i18n；字符串全部来自本仓库 catalog，故 innerHTML 安全 */
+function applyLang(): void {
+  document.documentElement.lang = getLang() === 'zh' ? 'zh-CN' : 'en'
+  document.title = t('appTitle')
+  for (const node of Array.from(document.querySelectorAll<HTMLElement>('[data-i18n]'))) {
+    node.innerHTML = t(node.dataset.i18n as never)
+  }
+  langSelect.value = getLang()
+}
+
+function switchLang(lang: Lang): void {
+  setLang(lang)
+  applyLang()
+  buildQosOptions()
+  dzTitle.textContent = selectedFile ? selectedFile.name : t('dropTitle')
+  fileMeta.textContent = selectedFile
+    ? `${fmtBytes(selectedFile.size)} · ${t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })}`
+    : t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })
+  if (lastResult) rerenderResult()
+  else {
+    setStatus('')
+    verifyEl.textContent = t('verifyNotRun')
   }
 }
 
@@ -232,6 +287,10 @@ dropzone.addEventListener('keydown', (event) => {
 })
 fileInput.addEventListener('change', () => acceptFile(fileInput.files?.[0]))
 
+// 整窗拖放：先阻止浏览器默认的「打开文件」行为
+for (const type of ['dragover', 'drop'] as const) {
+  window.addEventListener(type, (event) => event.preventDefault())
+}
 for (const type of ['dragenter', 'dragover'] as const) {
   dropzone.addEventListener(type, (event) => {
     event.preventDefault()
@@ -245,17 +304,22 @@ for (const type of ['dragleave', 'drop'] as const) {
   })
 }
 dropzone.addEventListener('drop', (event) => acceptFile(event.dataTransfer?.files?.[0]))
+window.addEventListener('drop', (event) => acceptFile(event.dataTransfer?.files?.[0]))
 
 convertBtn.addEventListener('click', () => void run())
 cancelBtn.addEventListener('click', () => controller?.abort())
+langSelect.addEventListener('change', () => switchLang(langSelect.value as Lang))
 
 // 出图依赖浏览器的渲染帧，标签页切到后台时会被挂起；切回来会自动继续
 document.addEventListener('visibilitychange', () => {
   if (controller && document.visibilityState === 'hidden') {
-    setStatus('已暂停：浏览器会挂起后台标签页，切回本页即自动继续')
+    setStatus(t('statusPaused'))
   }
 })
 
+applyLang()
 buildQosOptions()
 updateButtons()
-log(`就绪。选择 .pptx 后点击「开始转换」（上限 ${fmtBytes(LIMITS.maxInputBytes)} / ${LIMITS.maxSlides} 页）。`)
+verifyEl.textContent = t('verifyNotRun')
+fileMeta.textContent = t('dropHint', { limit: fmtBytes(LIMITS.maxInputBytes) })
+log(t('logReady', { limit: fmtBytes(LIMITS.maxInputBytes), slides: LIMITS.maxSlides }))

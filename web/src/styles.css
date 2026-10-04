@@ -37,6 +37,30 @@ h1 {
   margin: 0 0 6px;
 }
 
+.hero-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lang {
+  color: var(--mut);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lang select {
+  padding: 4px 8px;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--fg);
+}
+
 h2 {
   font-size: 15px;
   margin: 0 0 10px;
